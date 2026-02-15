@@ -593,17 +593,18 @@ function populateHelpDialog() {
 
   document.getElementById('claude-config').textContent =
 `# 1. Download the hook script
-curl -o /tmp/agent-dog-hook.sh https://agent.coreflow.sh/setup/hook.sh
-chmod +x /tmp/agent-dog-hook.sh
+mkdir -p ~/.claude/hooks
+curl -o ~/.claude/hooks/agent-dog.sh https://agent.coreflow.sh/setup/hook.sh
+chmod +x ~/.claude/hooks/agent-dog.sh
 
-# 2. Add to .claude/settings.json (project or global ~/.claude/)
-cat <<'EOF' > .claude/settings.json
+# 2. Add to ~/.claude/settings.json (global)
+cat <<'EOF' > ~/.claude/settings.json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "/tmp/agent-dog-hook.sh", "async": true }] }],
-    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "/tmp/agent-dog-hook.sh", "async": true }] }],
-    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "/tmp/agent-dog-hook.sh", "async": true }] }],
-    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "/tmp/agent-dog-hook.sh", "async": true }] }]
+    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
+    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }]
   }
 }
 EOF`
