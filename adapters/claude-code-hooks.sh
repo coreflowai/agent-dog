@@ -11,17 +11,30 @@ INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
 
-# For Stop events, extract all assistant messages from the current turn
+# For Stop events, extract all assistant text from the current turn
 if [ "$HOOK_EVENT" = "Stop" ]; then
   TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
   if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    LAST_MSG=$(tail -1000 "$TRANSCRIPT" | jq -sr '
-      [to_entries[] | select(.value.type == "user") | .key] | last as $ui |
-      if $ui then
-        [.[$ui + 1:][] | select(.type == "assistant") |
-          [.message.content[]? | select(.type == "text") | .text] | join("\n")
-        ] | map(select(. != "")) | join("\n\n")
-      else "" end')
+    LAST_MSG=""
+    while IFS= read -r line; do
+      T=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+      if [ "$T" = "file-history-snapshot" ]; then
+        LAST_MSG=""
+        continue
+      fi
+      if [ "$T" = "assistant" ]; then
+        TEXT=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "text") | .text] | join("\n")' 2>/dev/null)
+        if [ -n "$TEXT" ]; then
+          if [ -n "$LAST_MSG" ]; then
+            LAST_MSG="$LAST_MSG
+
+$TEXT"
+          else
+            LAST_MSG="$TEXT"
+          fi
+        fi
+      fi
+    done < "$TRANSCRIPT"
     if [ -n "$LAST_MSG" ]; then
       INPUT=$(echo "$INPUT" | jq --arg msg "$LAST_MSG" '. + {result: $msg}')
     fi
