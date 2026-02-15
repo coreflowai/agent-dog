@@ -119,33 +119,38 @@ INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
 
-# For Stop events, extract all assistant text from the current turn
-if [ "$HOOK_EVENT" = "Stop" ]; then
+# Incremental transcript reading for real-time assistant text
+# Uses a position file to track lines already processed
+if [ "$HOOK_EVENT" = "PreToolUse" ] || [ "$HOOK_EVENT" = "Stop" ]; then
   TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
   if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    LAST_MSG=""
-    while IFS= read -r line; do
-      T=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
-      if [ "$T" = "file-history-snapshot" ]; then
-        LAST_MSG=""
-        continue
-      fi
-      if [ "$T" = "assistant" ]; then
-        TEXT=$(echo "$line" | jq -r '[.message.content[]? | select(.type == "text") | .text] | join("\\n")' 2>/dev/null)
-        if [ -n "$TEXT" ]; then
-          if [ -n "$LAST_MSG" ]; then
-            LAST_MSG="$LAST_MSG
+    POS_FILE="/tmp/agent-dog-\${SESSION_ID}.pos"
+    LAST_POS=0
+    [ -f "$POS_FILE" ] && LAST_POS=$(cat "$POS_FILE")
+    CURRENT_POS=$(awk 'END{print NR}' "$TRANSCRIPT")
 
-$TEXT"
-          else
-            LAST_MSG="$TEXT"
-          fi
+    if [ "$CURRENT_POS" -gt "$LAST_POS" ]; then
+      NEW_TEXT=$(awk "NR > $LAST_POS" "$TRANSCRIPT" | while IFS= read -r line; do
+        T=$(echo "$line" | jq -r '.type // empty' 2>/dev/null)
+        if [ "$T" = "assistant" ]; then
+          echo "$line" | jq -r '[.message.content[]? | select(.type == "text") | .text] | join("\\n")' 2>/dev/null
+        fi
+      done | sed '/^\$/d')
+
+      if [ -n "$NEW_TEXT" ]; then
+        if [ "$HOOK_EVENT" = "Stop" ]; then
+          INPUT=$(echo "$INPUT" | jq --arg msg "$NEW_TEXT" '. + {result: $msg}')
+        else
+          curl -s -X POST "$AGENT_DOG_URL/api/ingest" \\
+            -H "Content-Type: application/json" \\
+            -d "$(jq -n --arg s "$SESSION_ID" --arg msg "$NEW_TEXT" \\
+              '{source:"claude-code",sessionId:$s,event:{hook_event_name:"message.assistant",session_id:$s,message:$msg}}')" &
         fi
       fi
-    done < "$TRANSCRIPT"
-    if [ -n "$LAST_MSG" ]; then
-      INPUT=$(echo "$INPUT" | jq --arg msg "$LAST_MSG" '. + {result: $msg}')
     fi
+
+    echo "$CURRENT_POS" > "$POS_FILE"
+    [ "$HOOK_EVENT" = "Stop" ] && rm -f "$POS_FILE"
   fi
 fi
 
