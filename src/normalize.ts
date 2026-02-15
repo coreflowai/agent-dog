@@ -85,7 +85,7 @@ export function normalizeClaudeCode(payload: IngestPayload): AgentDogEvent {
         type: 'tool.end',
         toolName: (event.tool_name ?? event.toolName ?? null) as string | null,
         toolInput: event.tool_input ?? event.toolInput ?? null,
-        toolOutput: truncate(event.tool_output ?? event.toolOutput ?? null),
+        toolOutput: truncate(event.tool_response ?? event.tool_output ?? event.toolOutput ?? null),
       }
 
     case 'message.assistant':

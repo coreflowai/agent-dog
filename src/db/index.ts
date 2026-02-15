@@ -98,6 +98,14 @@ export function addEvent(event: AgentDogEvent) {
 
 const STALE_TIMEOUT = 2 * 60 * 1000 // 2 minutes
 
+function deriveEventText(event: { type: string; text: string | null; toolName: string | null; error: string | null } | undefined): string | null {
+  if (!event) return null
+  if (event.toolName) return event.toolName
+  if (event.text) return event.text
+  if (event.error) return event.error
+  return null
+}
+
 function deriveStatus(status: string, lastEventTime: number): Session['status'] {
   if (status === 'error') return 'error'
   if (status === 'completed') return 'completed'
@@ -117,7 +125,7 @@ export function getSession(id: string): Session | null {
     .where(eq(events.sessionId, id))
     .all()
 
-  const lastEvent = db.select({ type: events.type })
+  const lastEvent = db.select({ type: events.type, text: events.text, toolName: events.toolName, error: events.error })
     .from(events)
     .where(eq(events.sessionId, id))
     .orderBy(desc(events.timestamp))
@@ -131,6 +139,7 @@ export function getSession(id: string): Session | null {
     lastEventTime: row.lastEventTime,
     status: deriveStatus(row.status!, row.lastEventTime),
     lastEventType: lastEvent?.type ?? null,
+    lastEventText: deriveEventText(lastEvent),
     eventCount: countResult.count,
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
   }
@@ -170,7 +179,7 @@ export function listSessions(): Session[] {
       .where(eq(events.sessionId, row.id))
       .all()
 
-    const lastEvent = db.select({ type: events.type })
+    const lastEvent = db.select({ type: events.type, text: events.text, toolName: events.toolName, error: events.error })
       .from(events)
       .where(eq(events.sessionId, row.id))
       .orderBy(desc(events.timestamp))
@@ -184,6 +193,7 @@ export function listSessions(): Session[] {
       lastEventTime: row.lastEventTime,
       status: deriveStatus(row.status!, row.lastEventTime),
       lastEventType: lastEvent?.type ?? null,
+      lastEventText: deriveEventText(lastEvent),
       eventCount: countResult.count,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     }

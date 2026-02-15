@@ -226,16 +226,25 @@ function renderSessionList() {
     const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
       : s.status === 'active' && !isWaitingForUser ? '<span class="loading loading-spinner loading-xs"></span>'
       : ''
-    const shortId = s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id
     const time = timeAgo(s.lastEventTime)
     const dur = s.lastEventTime - s.startTime
     const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
 
+    // User identity from session metadata
+    const user = s.metadata?.user
+    const userName = user?.githubUsername || user?.name || user?.osUser || ''
+    const title = userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
+
+    // Latest action preview
+    const lastText = s.lastEventText ? esc(truncate(s.lastEventText, 40)) : ''
+    const lastLabel = formatSessionLastEvent(s.lastEventType)
+
     return `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
       <div class="opacity-60 flex-shrink-0">${icon}</div>
       <div class="flex-1 min-w-0">
-        <div class="text-xs truncate">${shortId}</div>
-        <div class="text-[10px] opacity-40">${time} · ${durStr}</div>
+        <div class="text-xs truncate font-medium">${esc(title)}</div>
+        <div class="text-[10px] opacity-50 truncate">${lastLabel}${lastText ? ' · ' + lastText : ''}</div>
+        <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
       </div>
       <div class="text-right flex-shrink-0">
         <div class="text-xs font-bold">${s.eventCount}</div>
@@ -383,6 +392,20 @@ function appendDisplayRow(row, ri) {
     `
   }
   eventBody.appendChild(tr)
+}
+
+function formatSessionLastEvent(type) {
+  switch (type) {
+    case 'session.start': return 'started'
+    case 'session.end': return 'ended'
+    case 'message.user': return 'user'
+    case 'message.assistant': return 'assistant'
+    case 'tool.start': return 'running'
+    case 'tool.end': return 'tool'
+    case 'turn.start': return 'turn'
+    case 'error': return 'error'
+    default: return type || ''
+  }
 }
 
 function formatLabel(e) {

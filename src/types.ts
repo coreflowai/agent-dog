@@ -21,6 +21,7 @@ export type Session = {
   lastEventTime: number
   status: 'active' | 'completed' | 'error'
   lastEventType: string | null
+  lastEventText: string | null
   eventCount: number
   metadata: Record<string, unknown>
 }
