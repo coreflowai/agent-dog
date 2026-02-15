@@ -2,17 +2,17 @@ import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { io as ioClient } from 'socket.io-client'
 import { createServer } from '../src/server-factory'
 import { closeDb } from '../src/db'
-import type { AgentDogEvent } from '../src/types'
+import type { AgentFlowEvent } from '../src/types'
 
 function createTestClient(url: string, sessionId: string) {
-  const events: AgentDogEvent[] = []
+  const events: AgentFlowEvent[] = []
   const client = ioClient(url, { transports: ['websocket'] })
 
   client.on('connect', () => {
     client.emit('subscribe', sessionId)
   })
 
-  client.on('event', (event: AgentDogEvent) => {
+  client.on('event', (event: AgentFlowEvent) => {
     events.push(event)
   })
 
@@ -48,7 +48,7 @@ async function postEvent(url: string, sessionId: string, event: Record<string, u
 describe('Codex Streaming', () => {
   let srv: ReturnType<typeof createServer>
   const SESSION_ID = 'codex-test-session-1'
-  const dbPath = `/tmp/agent-dog-test-codex-${Date.now()}.db`
+  const dbPath = `/tmp/agent-flow-test-codex-${Date.now()}.db`
 
   beforeAll(() => {
     closeDb()

@@ -1,4 +1,4 @@
-import type { AgentDogEvent, IngestPayload } from './types'
+import type { AgentFlowEvent, IngestPayload } from './types'
 
 const MAX_OUTPUT_SIZE = 10_000
 
@@ -15,12 +15,12 @@ function generateId(): string {
   return crypto.randomUUID()
 }
 
-export function normalizeClaudeCode(payload: IngestPayload): AgentDogEvent {
+export function normalizeClaudeCode(payload: IngestPayload): AgentFlowEvent {
   const { sessionId, event } = payload
   const hookEvent = (event.hook_event_name ?? event.event ?? event.type ?? '') as string
   const now = Date.now()
 
-  const base: AgentDogEvent = {
+  const base: AgentFlowEvent = {
     id: generateId(),
     sessionId,
     timestamp: (event.timestamp as number) ?? now,
@@ -111,14 +111,14 @@ export function normalizeClaudeCode(payload: IngestPayload): AgentDogEvent {
   }
 }
 
-export function normalizeCodex(payload: IngestPayload): AgentDogEvent {
+export function normalizeCodex(payload: IngestPayload): AgentFlowEvent {
   const { sessionId, event } = payload
   const eventType = (event.type ?? '') as string
   const item = (event.item ?? {}) as Record<string, unknown>
   const itemType = (item.type ?? '') as string
   const now = Date.now()
 
-  const base: AgentDogEvent = {
+  const base: AgentFlowEvent = {
     id: generateId(),
     sessionId,
     timestamp: (event.timestamp as number) ?? now,
@@ -217,7 +217,7 @@ export function normalizeCodex(payload: IngestPayload): AgentDogEvent {
   }
 }
 
-export function normalize(payload: IngestPayload): AgentDogEvent {
+export function normalize(payload: IngestPayload): AgentFlowEvent {
   if (payload.source === 'codex') {
     return normalizeCodex(payload)
   }

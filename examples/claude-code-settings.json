@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/agent-dog/adapters/claude-code-hooks.sh",
+            "command": "/path/to/agent-flow/adapters/claude-code-hooks.sh",
             "async": true
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/agent-dog/adapters/claude-code-hooks.sh",
+            "command": "/path/to/agent-flow/adapters/claude-code-hooks.sh",
             "async": true
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/agent-dog/adapters/claude-code-hooks.sh",
+            "command": "/path/to/agent-flow/adapters/claude-code-hooks.sh",
             "async": true
           }
         ]
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/path/to/agent-dog/adapters/claude-code-hooks.sh",
+            "command": "/path/to/agent-flow/adapters/claude-code-hooks.sh",
             "async": true
           }
         ]

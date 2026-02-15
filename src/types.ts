@@ -1,4 +1,4 @@
-export type AgentDogEvent = {
+export type AgentFlowEvent = {
   id: string
   sessionId: string
   timestamp: number

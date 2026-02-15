@@ -1,7 +1,7 @@
 import { createServer } from './src/server-factory'
 
 const PORT = parseInt(process.env.PORT ?? '3333', 10)
-const DB_PATH = process.env.AGENT_DOG_DB ?? 'agent-dog.db'
+const DB_PATH = process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
 
 const { server, io, url } = createServer({
   port: PORT,
@@ -9,6 +9,6 @@ const { server, io, url } = createServer({
   serveStatic: true,
 })
 
-console.log(`AgentDog running at ${url}`)
+console.log(`AgentFlow running at ${url}`)
 
 export { server, io }

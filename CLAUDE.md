@@ -1,4 +1,4 @@
-# AgentDog
+# AgentFlow
 
 Real-time observability platform for AI agent sessions (Claude Code, Codex CLI, Claude Agent SDK).
 
@@ -22,12 +22,12 @@ bunx drizzle-kit migrate    # Apply pending migrations
 ## Project Structure
 
 ```
-server.ts                  # Entry point — reads PORT and AGENT_DOG_DB env vars
+server.ts                  # Entry point — reads PORT and AGENT_FLOW_DB env vars
 src/
   server-factory.ts        # createServer() factory — returns { server, io, url, close }
   routes.ts                # API routes (createRouter(io))
   normalize.ts             # Event normalization per source (claude-code, codex)
-  types.ts                 # Core types: AgentDogEvent, Session, IngestPayload
+  types.ts                 # Core types: AgentFlowEvent, Session, IngestPayload
   db/
     index.ts               # Database operations (initDb, addEvent, getSession, etc.)
     schema.ts              # Drizzle ORM table definitions (sessions, events)
@@ -47,7 +47,7 @@ tests/
 ## Architecture
 
 - **Server Factory pattern**: `createServer(options)` allows flexible config for production and testing (ephemeral DBs, custom ports)
-- **Event Normalization**: `normalize.ts` converts raw hooks from different sources into a unified `AgentDogEvent` format
+- **Event Normalization**: `normalize.ts` converts raw hooks from different sources into a unified `AgentFlowEvent` format
 - **Socket.IO Rooms**: Clients subscribe to per-session rooms for real-time event streaming
 - **Derived session status**: `active` sessions auto-complete after 2 min idle (`STALE_TIMEOUT`)
 - **Adapters are async/fire-and-forget**: Hook scripts run in background to not block the agent
@@ -79,8 +79,8 @@ Tool outputs are truncated to 10KB (`MAX_OUTPUT_SIZE`).
 
 ## Naming Conventions
 
-- **Factory functions**: `create*()` (createServer, createAgentDogHooks)
-- **Types**: PascalCase (AgentDogEvent, IngestPayload)
+- **Factory functions**: `create*()` (createServer, createAgentFlowHooks)
+- **Types**: PascalCase (AgentFlowEvent, IngestPayload)
 - **DB columns**: snake_case in SQL, camelCase in TypeScript
 - **Event types**: lowercase dot-separated (`tool.start`, `session.stop`)
 
@@ -97,5 +97,5 @@ Tests use the server factory with ephemeral `/tmp` databases. Each test creates 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | `3333` | Server port |
-| `AGENT_DOG_DB` | `agent-dog.db` | SQLite database path |
-| `AGENT_DOG_URL` | `http://localhost:3333` | Used by adapters to POST events |
+| `AGENT_FLOW_DB` | `agent-flow.db` | SQLite database path |
+| `AGENT_FLOW_URL` | `http://localhost:3333` | Used by adapters to POST events |

@@ -1,5 +1,5 @@
 {
-  "name": "agent-dog",
+  "name": "agent-flow",
   "version": "0.1.0",
   "description": "Real-time observability for AI agent sessions",
   "scripts": {

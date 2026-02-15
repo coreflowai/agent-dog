@@ -3,9 +3,9 @@ import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { migrate } from 'drizzle-orm/bun-sqlite/migrator'
 import { eq, desc, sql } from 'drizzle-orm'
 import { sessions, events } from './schema'
-import type { AgentDogEvent, Session, UserInfo } from '../types'
+import type { AgentFlowEvent, Session, UserInfo } from '../types'
 
-const DB_PATH = process.env.AGENT_DOG_DB ?? 'agent-dog.db'
+const DB_PATH = process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
 
 let _db: ReturnType<typeof createDb> | null = null
 
@@ -37,7 +37,7 @@ export function initDb(dbPath?: string) {
   return getDb(dbPath)
 }
 
-export function addEvent(event: AgentDogEvent) {
+export function addEvent(event: AgentFlowEvent) {
   const db = getDb()
   const now = event.timestamp
 
@@ -146,7 +146,7 @@ export function getSession(id: string): Session | null {
   }
 }
 
-export function getSessionEvents(sessionId: string): AgentDogEvent[] {
+export function getSessionEvents(sessionId: string): AgentFlowEvent[] {
   const db = getDb()
   return db.select().from(events)
     .where(eq(events.sessionId, sessionId))
@@ -156,10 +156,10 @@ export function getSessionEvents(sessionId: string): AgentDogEvent[] {
       id: row.id,
       sessionId: row.sessionId,
       timestamp: row.timestamp,
-      source: row.source as AgentDogEvent['source'],
-      category: row.category as AgentDogEvent['category'],
+      source: row.source as AgentFlowEvent['source'],
+      category: row.category as AgentFlowEvent['category'],
       type: row.type,
-      role: row.role as AgentDogEvent['role'],
+      role: row.role as AgentFlowEvent['role'],
       text: row.text,
       toolName: row.toolName,
       toolInput: row.toolInput,

@@ -1,4 +1,4 @@
-// AgentDog Dashboard
+// AgentFlow Dashboard
 const socket = io({ transports: ['websocket'] })
 
 let sessions = []
@@ -10,6 +10,8 @@ let selectedSessionIdx = -1
 let selectedEventIdx = -1
 let displayRows = []
 let focusArea = 'sessions' // 'sessions' | 'events'
+let currentView = 'bubbles' // 'bubbles' | 'list'
+const STALE_TIMEOUT = 2 * 60 * 1000 // 2 minutes — matches server
 
 // Source icons (Anthropic / OpenAI)
 const ICON_CLAUDE = `<svg width="14" height="14" viewBox="0 0 248 248" fill="none"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>`
@@ -28,11 +30,48 @@ const detailContent = document.getElementById('detail-content')
 const detailClose = document.getElementById('detail-close')
 const detailHandle = document.getElementById('detail-handle')
 const userFilter = document.getElementById('user-filter')
+const bubbleView = document.getElementById('bubble-view')
+const listView = document.getElementById('list-view')
+const bubbleContainer = document.getElementById('bubble-container')
+const bubbleEmpty = document.getElementById('bubble-empty')
+const bubbleCount = document.getElementById('bubble-count')
+const bubbleUserFilter = document.getElementById('bubble-user-filter')
+const btnViewBubbles = document.getElementById('btn-view-bubbles')
+const btnViewList = document.getElementById('btn-view-list')
+
+// --- View switching ---
+function switchView(view) {
+  currentView = view
+  if (view === 'bubbles') {
+    bubbleView.classList.remove('hidden')
+    listView.classList.add('hidden')
+    btnViewBubbles.classList.add('btn-active')
+    btnViewList.classList.remove('btn-active')
+    renderBubbles()
+  } else {
+    bubbleView.classList.add('hidden')
+    listView.classList.remove('hidden')
+    btnViewBubbles.classList.remove('btn-active')
+    btnViewList.classList.add('btn-active')
+  }
+}
+
+btnViewBubbles.addEventListener('click', () => switchView('bubbles'))
+btnViewList.addEventListener('click', () => switchView('list'))
 
 // --- User filter ---
 userFilter.addEventListener('change', () => {
   currentUserFilter = userFilter.value
+  bubbleUserFilter.value = currentUserFilter
   applyFilter()
+  if (currentView === 'bubbles') renderBubbles()
+})
+
+bubbleUserFilter.addEventListener('change', () => {
+  currentUserFilter = bubbleUserFilter.value
+  userFilter.value = currentUserFilter
+  applyFilter()
+  if (currentView === 'bubbles') renderBubbles()
 })
 
 function applyFilter() {
@@ -56,9 +95,11 @@ function applyFilter() {
 
 function updateUserFilterDropdown() {
   const users = [...new Set(sessions.map(s => s.userId).filter(Boolean))].sort()
-  const prev = userFilter.value
-  userFilter.innerHTML = '<option value="">All users</option>' +
+  const prev = currentUserFilter
+  const options = '<option value="">All users</option>' +
     users.map(u => `<option value="${esc(u)}"${u === prev ? ' selected' : ''}>${esc(u)}</option>`).join('')
+  userFilter.innerHTML = options
+  bubbleUserFilter.innerHTML = options
 }
 
 // --- Connection ---
@@ -76,7 +117,9 @@ socket.on('sessions:list', (list) => {
   sessions = list
   updateUserFilterDropdown()
   applyFilter()
-  if (!currentSessionId && filteredSessions.length > 0) {
+  if (currentView === 'bubbles') {
+    renderBubbles()
+  } else if (!currentSessionId && filteredSessions.length > 0) {
     selectedSessionIdx = 0
     selectSession(filteredSessions[0].id)
   }
@@ -90,7 +133,9 @@ socket.on('session:update', (session) => {
   else sessions.unshift(session)
   updateUserFilterDropdown()
   applyFilter()
-  if (isNew && (!currentUserFilter || session.userId === currentUserFilter)) {
+  if (currentView === 'bubbles') {
+    renderBubbles()
+  } else if (isNew && (!currentUserFilter || session.userId === currentUserFilter)) {
     selectedSessionIdx = 0
     selectSession(session.id)
   }
@@ -106,6 +151,7 @@ socket.on('sessions:cleared', () => {
   updateUserFilterDropdown()
   renderSessionList()
   showEmptyState()
+  if (currentView === 'bubbles') renderBubbles()
 })
 
 // --- Events ---
@@ -132,7 +178,9 @@ socket.on('session:deleted', (id) => {
   }
   updateUserFilterDropdown()
   applyFilter()
-  if (!currentSessionId && filteredSessions.length > 0) {
+  if (currentView === 'bubbles') {
+    renderBubbles()
+  } else if (!currentSessionId && filteredSessions.length > 0) {
     selectedSessionIdx = 0
     selectSession(filteredSessions[0].id)
   }
@@ -142,19 +190,31 @@ socket.on('session:deleted', (id) => {
 document.addEventListener('keydown', (e) => {
   // Don't handle keys when dialog is open
   if (document.querySelector('dialog[open]')) return
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return
+
+  if (e.key === 'v') {
+    e.preventDefault()
+    switchView(currentView === 'bubbles' ? 'list' : 'bubbles')
+    return
+  }
 
   if (e.key === 'Escape') {
     e.preventDefault()
-    if (!detailPanel.classList.contains('hidden')) {
+    if (currentView === 'list' && !detailPanel.classList.contains('hidden')) {
       closeDetail()
-    } else if (focusArea === 'events') {
+    } else if (currentView === 'list' && focusArea === 'events') {
       focusArea = 'sessions'
       sessionList.focus()
       highlightSession()
       mobileBack()
+    } else if (currentView === 'list') {
+      switchView('bubbles')
     }
     return
   }
+
+  // List view keyboard nav only
+  if (currentView !== 'list') return
 
   if (e.key === 'ArrowLeft' || e.key === 'h') {
     e.preventDefault()
@@ -629,23 +689,23 @@ function populateHelpDialog() {
   document.getElementById('claude-config').textContent =
 `# 1. Download the hook script
 mkdir -p ~/.claude/hooks
-curl -o ~/.claude/hooks/agent-dog.sh https://agent.coreflow.sh/setup/hook.sh
-chmod +x ~/.claude/hooks/agent-dog.sh
+curl -o ~/.claude/hooks/agent-flow.sh https://agent.coreflow.sh/setup/hook.sh
+chmod +x ~/.claude/hooks/agent-flow.sh
 
 # 2. Add to ~/.claude/settings.json (global)
 cat <<'EOF' > ~/.claude/settings.json
 {
   "hooks": {
-    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
-    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
-    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }],
-    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-dog.sh", "async": true }] }]
+    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-flow.sh", "async": true }] }],
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-flow.sh", "async": true }] }],
+    "Stop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-flow.sh", "async": true }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [{ "type": "command", "command": "~/.claude/hooks/agent-flow.sh", "async": true }] }]
   }
 }
 EOF`
 
   document.getElementById('codex-config').textContent =
-`# Pipe codex JSON output through to AgentDog
+`# Pipe codex JSON output through to AgentFlow
 SESSION_ID="codex-$(date +%s)"
 codex exec --json "your prompt" | while IFS= read -r line; do
   echo "$line"
@@ -787,6 +847,112 @@ window.addEventListener('resize', () => {
     mainPanel.classList.remove('mobile-hidden')
   }
 })
+
+// --- Bubble view ---
+function getActiveSessions() {
+  const src = currentUserFilter
+    ? sessions.filter(s => s.userId === currentUserFilter)
+    : sessions
+  return src.filter(s => s.status === 'active')
+}
+
+function renderBubbles() {
+  const active = getActiveSessions()
+  bubbleCount.textContent = active.length
+  bubbleEmpty.classList.toggle('hidden', active.length > 0)
+
+  const activeIds = new Set(active.map(s => s.id))
+
+  // Exit bubbles for sessions no longer active
+  bubbleContainer.querySelectorAll('.agent-bubble').forEach(el => {
+    if (!activeIds.has(el.dataset.sid)) {
+      el.classList.add('exiting')
+      el.addEventListener('transitionend', () => el.remove(), { once: true })
+      setTimeout(() => { if (el.parentNode) el.remove() }, 500)
+    }
+  })
+
+  active.forEach(s => {
+    let el = bubbleContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
+    if (el) {
+      updateBubbleContent(el, s)
+    } else {
+      el = createBubbleElement(s)
+      bubbleContainer.appendChild(el)
+      requestAnimationFrame(() => el.classList.add('visible'))
+    }
+  })
+}
+
+function createBubbleElement(session) {
+  const el = document.createElement('div')
+  el.className = 'agent-bubble bg-base-100'
+  el.dataset.sid = session.id
+  el.dataset.eventCount = session.eventCount || 0
+  el.addEventListener('click', () => bubbleSelectSession(session.id))
+  updateBubbleContent(el, session)
+  return el
+}
+
+function updateBubbleContent(el, session) {
+  const icon = session.source === 'claude-code' ? ICON_CLAUDE : ICON_OPENAI
+  const user = session.metadata?.user
+  const userName = user?.githubUsername || user?.name || user?.osUser || ''
+  const title = userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
+
+  const isWaitingForUser = session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start'
+  const spinner = !isWaitingForUser ? '<span class="css-spinner ml-1"></span>' : ''
+
+  const lastLabel = formatSessionLastEvent(session.lastEventType)
+  const lastText = session.lastEventText ? esc(truncate(session.lastEventText, 30)) : ''
+
+  const dur = (session.lastEventTime || Date.now()) - session.startTime
+  const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
+
+  el.innerHTML = `
+    <div class="flex items-center gap-1.5 mb-1.5">
+      <span class="opacity-60 flex-shrink-0">${icon}</span>
+      <span class="text-xs font-medium truncate">${esc(title)}</span>
+      ${spinner}
+    </div>
+    <div class="text-[10px] opacity-50 truncate mb-1">${lastLabel}${lastText ? ' · ' + lastText : ''}</div>
+    <div class="flex items-center justify-between">
+      <span class="text-[10px] opacity-30">${durStr}</span>
+      <span class="badge badge-xs badge-ghost text-[9px]">${session.eventCount} events</span>
+    </div>
+  `
+
+  // Pulse on new activity
+  const prevCount = parseInt(el.dataset.eventCount || '0')
+  if (session.eventCount > prevCount && prevCount > 0) {
+    el.classList.remove('pulse')
+    void el.offsetWidth
+    el.classList.add('pulse')
+    el.addEventListener('animationend', () => el.classList.remove('pulse'), { once: true })
+  }
+  el.dataset.eventCount = session.eventCount
+}
+
+function bubbleSelectSession(id) {
+  switchView('list')
+  selectedSessionIdx = filteredSessions.findIndex(s => s.id === id)
+  selectSession(id)
+}
+
+// --- Stale session cleanup (client-side) ---
+setInterval(() => {
+  let changed = false
+  sessions.forEach(s => {
+    if (s.status === 'active' && s.lastEventTime && Date.now() - s.lastEventTime > STALE_TIMEOUT) {
+      s.status = 'completed'
+      changed = true
+    }
+  })
+  if (changed) {
+    applyFilter()
+    if (currentView === 'bubbles') renderBubbles()
+  }
+}, 10000)
 
 // Init Lucide icons
 lucide.createIcons()

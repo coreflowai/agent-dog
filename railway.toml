@@ -11,4 +11,4 @@ restartPolicyMaxRetries = 3
 mountPath = "/data"
 
 [env]
-AGENT_DOG_DB = "/data/agent-dog.db"
+AGENT_FLOW_DB = "/data/agent-flow.db"

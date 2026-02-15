@@ -1,10 +1,10 @@
 #!/bin/bash
-# AgentDog - Claude Code Hook Adapter
-# Reads hook JSON from stdin, POSTs to AgentDog server
+# AgentFlow - Claude Code Hook Adapter
+# Reads hook JSON from stdin, POSTs to AgentFlow server
 # Captures user identity from git config and GitHub CLI
 #
 # Usage: Configure in .claude/settings.json with async: true
-AGENT_DOG_URL="${AGENT_DOG_URL:-http://localhost:3333}"
+AGENT_FLOW_URL="${AGENT_FLOW_URL:-http://localhost:3333}"
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
@@ -14,7 +14,7 @@ HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
 if [ "$HOOK_EVENT" = "PreToolUse" ] || [ "$HOOK_EVENT" = "Stop" ]; then
   TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript_path // empty')
   if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
-    POS_FILE="/tmp/agent-dog-${SESSION_ID}.pos"
+    POS_FILE="/tmp/agent-flow-${SESSION_ID}.pos"
     LAST_POS=0
     [ -f "$POS_FILE" ] && LAST_POS=$(cat "$POS_FILE")
     CURRENT_POS=$(awk 'END{print NR}' "$TRANSCRIPT")
@@ -33,7 +33,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ] || [ "$HOOK_EVENT" = "Stop" ]; then
           INPUT=$(echo "$INPUT" | jq --arg msg "$NEW_TEXT" '. + {result: $msg}')
         else
           # Send as separate intermediate assistant message
-          curl -s -X POST "$AGENT_DOG_URL/api/ingest" \
+          curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg s "$SESSION_ID" --arg msg "$NEW_TEXT" \
               '{source:"claude-code",sessionId:$s,event:{hook_event_name:"message.assistant",session_id:$s,message:$msg}}')" &
@@ -75,7 +75,7 @@ USER_OBJ=$(jq -n \
    (if $ghUser != "" then {githubUsername: $ghUser} else {} end) +
    (if $ghId  != "" then {githubId: ($ghId | tonumber)} else {} end)')
 
-curl -s -X POST "$AGENT_DOG_URL/api/ingest" \
+curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \
   -H "Content-Type: application/json" \
   -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$INPUT" --argjson u "$USER_OBJ" \
     '{source:"claude-code",sessionId:$s,event:$e,user:$u}')" &

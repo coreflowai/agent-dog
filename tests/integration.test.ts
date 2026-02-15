@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeAll } from 'bun:test'
 import path from 'path'
 
-const BASE_URL = process.env.AGENT_DOG_URL ?? 'http://localhost:3333'
+const BASE_URL = process.env.AGENT_FLOW_URL ?? 'http://localhost:3333'
 const HOOKS_SCRIPT = path.join(import.meta.dir, '..', 'adapters', 'claude-code-hooks.sh')
 
 function sleep(ms: number) {
@@ -14,7 +14,7 @@ beforeAll(async () => {
 })
 
 describe('Integration - Real Claude Code session', () => {
-  test('runs claude -p with hooks and streams events to AgentDog', async () => {
+  test('runs claude -p with hooks and streams events to AgentFlow', async () => {
     const settings = {
       hooks: {
         PreToolUse: [{ matcher: '', hooks: [{ type: 'command', command: HOOKS_SCRIPT, async: true }] }],
@@ -23,7 +23,7 @@ describe('Integration - Real Claude Code session', () => {
         UserPromptSubmit: [{ matcher: '', hooks: [{ type: 'command', command: HOOKS_SCRIPT, async: true }] }],
       },
     }
-    const settingsPath = `/tmp/agent-dog-test-settings-${Date.now()}.json`
+    const settingsPath = `/tmp/agent-flow-test-settings-${Date.now()}.json`
     await Bun.write(settingsPath, JSON.stringify(settings))
 
     try {
@@ -36,7 +36,7 @@ describe('Integration - Real Claude Code session', () => {
         '--max-turns', '2',
         'What is 2+2? Use bash to echo the answer: echo "2+2=4"',
       ], {
-        env: { ...process.env, AGENT_DOG_URL: BASE_URL },
+        env: { ...process.env, AGENT_FLOW_URL: BASE_URL },
         stdout: 'pipe',
         stderr: 'pipe',
         cwd: import.meta.dir,
@@ -76,7 +76,7 @@ describe('Integration - Real Claude Code session', () => {
 })
 
 describe('Integration - Real Codex session', () => {
-  test('runs codex exec --json and pipes events to AgentDog', async () => {
+  test('runs codex exec --json and pipes events to AgentFlow', async () => {
     const sessionId = `codex-integration-${Date.now()}`
 
     const proc = Bun.spawn([

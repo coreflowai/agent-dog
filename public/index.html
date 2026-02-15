@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentDog</title>
+  <title>AgentFlow</title>
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
   <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -30,6 +30,27 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .css-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; opacity: 0.6; }
 
+    /* Bubble view */
+    .agent-bubble {
+      width: 200px; border-radius: 12px; border: 1px solid oklch(85% 0 0);
+      padding: 12px; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s, opacity 0.4s;
+      animation: bubble-float 3s ease-in-out infinite;
+      opacity: 0; transform: scale(0.85);
+    }
+    .agent-bubble.visible { opacity: 1; transform: scale(1); }
+    .agent-bubble.exiting { opacity: 0; transform: scale(0.85); pointer-events: none; }
+    .agent-bubble:hover { transform: scale(1.04); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.1); }
+    @keyframes bubble-float {
+      0%, 100% { translate: 0 0; }
+      50% { translate: 0 -3px; }
+    }
+    @keyframes bubble-pulse {
+      0% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0.4); }
+      70% { box-shadow: 0 0 0 8px oklch(70% 0.1 250 / 0); }
+      100% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0); }
+    }
+    .agent-bubble.pulse { animation: bubble-pulse 0.6s ease-out, bubble-float 3s ease-in-out infinite; }
+
     /* Mobile responsive */
     @media (max-width: 767px) {
       #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
@@ -39,6 +60,7 @@
       #mobile-back { display: flex !important; }
       .resize-handle-y { display: none !important; }
       #detail-panel { max-height: 50vh !important; }
+      .agent-bubble { width: 160px; padding: 10px; }
     }
   </style>
 </head>
@@ -47,17 +69,42 @@
   <!-- Navbar -->
   <div class="navbar bg-base-300 shadow-sm px-4 min-h-10 h-10">
     <div class="flex-1">
-      <span class="text-sm font-bold tracking-tight">AgentDog</span>
+      <span class="text-sm font-bold tracking-tight">AgentFlow</span>
       <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
     </div>
     <div class="flex-none gap-2">
+      <div class="join">
+        <button id="btn-view-bubbles" class="btn btn-xs join-item btn-active" title="Bubble view (v)">bubbles</button>
+        <button id="btn-view-list" class="btn btn-xs join-item" title="List view (v)">list</button>
+      </div>
       <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
     </div>
   </div>
 
-  <!-- Main Layout -->
-  <div class="flex h-[calc(100vh-2.5rem)]">
+  <!-- Bubble View (default) -->
+  <div id="bubble-view" class="h-[calc(100vh-2.5rem)] flex flex-col">
+    <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Active Sessions</span>
+        <span id="bubble-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
+      </div>
+      <select id="bubble-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
+        <option value="">All users</option>
+      </select>
+    </div>
+    <div id="bubble-container" class="flex-1 flex flex-wrap items-start justify-center gap-4 p-6 overflow-y-auto content-start">
+      <div id="bubble-empty" class="flex items-center justify-center w-full h-full">
+        <div class="text-center opacity-40">
+          <p class="text-sm mb-1">No active sessions</p>
+          <p class="text-[10px]">Bubbles appear here when agents are running</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- List View -->
+  <div id="list-view" class="flex h-[calc(100vh-2.5rem)] hidden">
 
     <!-- Session List (Left Panel) -->
     <div id="sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:256px;min-width:120px;max-width:50vw;">
@@ -105,7 +152,7 @@
       </div>
     </div>
 
-  </div>
+  </div> <!-- /list-view -->
 
   <!-- Help Dialog -->
   <dialog id="help-dialog" class="modal">
@@ -114,7 +161,7 @@
         <form method="dialog">
           <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"><i data-lucide="x" class="w-4 h-4"></i></button>
         </form>
-        <h3 class="text-base font-bold">Connect your agent to AgentDog</h3>
+        <h3 class="text-base font-bold">Connect your agent to AgentFlow</h3>
       </div>
 
       <div class="px-6 py-4 overflow-y-auto flex-1 space-y-4 text-xs">
@@ -139,7 +186,7 @@
             <svg width="16" height="16" viewBox="29 29 122 122" fill="currentColor" class="flex-shrink-0"><path d="M75.91 73.628V62.232c0-.96.36-1.68 1.199-2.16l22.912-13.194c3.119-1.8 6.838-2.639 10.676-2.639 14.394 0 23.511 11.157 23.511 23.032 0 .839 0 1.799-.12 2.758l-23.752-13.914c-1.439-.84-2.879-.84-4.318 0L75.91 73.627Zm53.499 44.383v-27.23c0-1.68-.72-2.88-2.159-3.719L97.142 69.55l9.836-5.638c.839-.48 1.559-.48 2.399 0l22.912 13.195c6.598 3.839 11.035 11.995 11.035 19.912 0 9.116-5.397 17.513-13.915 20.992v.001Zm-60.577-23.99-9.836-5.758c-.84-.48-1.2-1.2-1.2-2.16v-26.39c0-12.834 9.837-22.55 23.152-22.55 5.039 0 9.716 1.679 13.676 4.678L70.993 55.516c-1.44.84-2.16 2.039-2.16 3.719v34.787-.002Zm21.173 12.234L75.91 98.339V81.546l14.095-7.917 14.094 7.917v16.793l-14.094 7.916Zm9.056 36.467c-5.038 0-9.716-1.68-13.675-4.678l23.631-13.676c1.439-.839 2.159-2.038 2.159-3.718V85.863l9.956 5.757c.84.48 1.2 1.2 1.2 2.16v26.389c0 12.835-9.957 22.552-23.27 22.552v.001Zm-28.43-26.75L47.72 102.778c-6.599-3.84-11.036-11.996-11.036-19.913 0-9.236 5.518-17.513 14.034-20.992v27.35c0 1.68.72 2.879 2.16 3.718l29.989 17.393-9.837 5.638c-.84.48-1.56.48-2.399 0Zm-1.318 19.673c-13.555 0-23.512-10.196-23.512-22.792 0-.959.12-1.919.24-2.879l23.63 13.675c1.44.84 2.88.84 4.32 0l30.108-17.392v11.395c0 .96-.361 1.68-1.2 2.16l-22.912 13.194c-3.119 1.8-6.837 2.639-10.675 2.639Z"/></svg>
             <span class="font-bold text-sm">Codex CLI</span>
           </div>
-          <p class="opacity-60 mb-2">Pipe JSON output to AgentDog:</p>
+          <p class="opacity-60 mb-2">Pipe JSON output to AgentFlow:</p>
           <div class="relative">
             <pre id="codex-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
             <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="codex-config">copy</button>
@@ -196,7 +243,7 @@
       <div class="sticky bottom-0 bg-base-100 border-t border-base-300 px-6 py-3">
         <div class="opacity-40 text-[10px] flex items-center gap-2">
           <i data-lucide="keyboard" class="w-3 h-3"></i>
-          <p><b>Keyboard:</b> j/k navigate, Enter/l to view events, Escape/h back to sessions, ? help</p>
+          <p><b>Keyboard:</b> v toggle view, j/k navigate, Enter/l to view events, Escape/h back, ? help</p>
         </div>
       </div>
     </div>

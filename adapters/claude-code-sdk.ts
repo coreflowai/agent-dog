@@ -1,10 +1,10 @@
 /**
- * AgentDog - Claude Agent SDK Adapter
+ * AgentFlow - Claude Agent SDK Adapter
  *
  * Provides hook callbacks for @anthropic-ai/claude-agent-sdk.
  * Usage:
- *   import { createAgentDogHooks } from './adapters/claude-code-sdk'
- *   const hooks = createAgentDogHooks('http://localhost:3333', {
+ *   import { createAgentFlowHooks } from './adapters/claude-code-sdk'
+ *   const hooks = createAgentFlowHooks('http://localhost:3333', {
  *     name: 'Ben', email: 'ben@example.com', githubUsername: 'bennykok'
  *   })
  *   const result = await query({ prompt: "...", options: { hooks } })
@@ -35,7 +35,7 @@ async function postEvent(url: string, sessionId: string, event: Record<string, u
   }
 }
 
-export function createAgentDogHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo) {
+export function createAgentFlowHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo) {
   return {
     onSessionStart: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
