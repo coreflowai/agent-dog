@@ -20,12 +20,22 @@ export type Session = {
   startTime: number
   lastEventTime: number
   status: 'active' | 'completed' | 'error'
+  lastEventType: string | null
   eventCount: number
   metadata: Record<string, unknown>
+}
+
+export type UserInfo = {
+  name?: string
+  email?: string
+  osUser?: string
+  githubUsername?: string
+  githubId?: number
 }
 
 export type IngestPayload = {
   source: 'claude-code' | 'codex'
   sessionId: string
   event: Record<string, unknown>
+  user?: UserInfo
 }

@@ -1,0 +1,14 @@
+[build]
+builder = "railpack"
+
+[deploy]
+startCommand = "bun run server.ts"
+healthcheckPath = "/"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[volumes]]
+mountPath = "/data"
+
+[env]
+AGENT_DOG_DB = "/data/agent-dog.db"

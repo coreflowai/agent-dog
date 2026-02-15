@@ -41,8 +41,19 @@ export function normalizeClaudeCode(payload: IngestPayload): AgentDogEvent {
     case 'session.start':
       return { ...base, category: 'session', type: 'session.start' }
 
+    case 'Stop': {
+      const stopText = (event.result ?? event.response ?? null) as string | null
+      return {
+        ...base,
+        category: 'message',
+        type: 'message.assistant',
+        role: 'assistant',
+        text: stopText,
+        meta: event.stop_reason ? { stop_reason: event.stop_reason } : {},
+      }
+    }
+
     case 'SessionEnd':
-    case 'Stop':
     case 'session.end':
       return { ...base, category: 'session', type: 'session.end' }
 
@@ -53,7 +64,7 @@ export function normalizeClaudeCode(payload: IngestPayload): AgentDogEvent {
         category: 'message',
         type: 'message.user',
         role: 'user',
-        text: (event.message ?? event.text ?? event.prompt ?? null) as string | null,
+        text: (event.user_message ?? event.message ?? event.text ?? event.prompt ?? null) as string | null,
       }
 
     case 'PreToolUse':

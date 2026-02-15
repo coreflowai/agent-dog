@@ -15,13 +15,18 @@
       --font-mono: 'Geist Mono', monospace;
     }
     body { min-height: 100vh; font-family: 'Geist Mono', monospace; }
-    .session-item { cursor: pointer; outline: none; }
-    .session-item.active { background: oklch(var(--color-base-200)); }
-    .session-item:focus-visible { outline: 2px solid oklch(var(--color-primary)); outline-offset: -2px; }
-    .event-row { outline: none; }
-    .event-row:focus-visible { outline: 2px solid oklch(var(--color-primary)); outline-offset: -2px; }
-    .event-row.selected { background: oklch(var(--color-base-200)); }
+    .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
+    .session-item:hover { background: oklch(94% 0 0); }
+    .session-item.active { background: oklch(90% 0 0); }
+    .event-row { outline: none; transition: background 0.15s; }
+    .event-row:hover { background: oklch(96% 0 0); }
+    .event-row.selected { background: oklch(92% 0 0); }
     .event-detail { max-height: 200px; overflow-y: auto; }
+    #session-list:focus, #event-panel:focus { outline: none; }
+    .resize-handle-x { width: 4px; cursor: col-resize; transition: background 0.15s; flex-shrink: 0; }
+    .resize-handle-x:hover, .resize-handle-x.active { background: oklch(70% 0.1 250); }
+    .resize-handle-y { height: 4px; cursor: row-resize; transition: background 0.15s; flex-shrink: 0; }
+    .resize-handle-y:hover, .resize-handle-y.active { background: oklch(70% 0.1 250); }
   </style>
 </head>
 <body class="bg-base-100 text-base-content">
@@ -34,7 +39,8 @@
     </div>
     <div class="flex-none gap-2">
       <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
-      <button id="btn-clear" class="btn btn-xs btn-error btn-outline">Clear</button>
+      <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
+      <button id="btn-clear" class="btn btn-xs btn-ghost opacity-40" title="Clear current session">Clear</button>
     </div>
   </div>
 
@@ -42,7 +48,7 @@
   <div class="flex h-[calc(100vh-2.5rem)]">
 
     <!-- Session List (Left Panel) -->
-    <div class="w-64 min-w-64 border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col">
+    <div id="sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:256px;min-width:120px;max-width:50vw;">
       <div class="px-3 py-2 border-b border-base-300">
         <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Sessions</span>
       </div>
@@ -50,6 +56,7 @@
         <div class="p-4 text-center opacity-40 text-xs">No sessions yet</div>
       </div>
     </div>
+    <div id="sidebar-handle" class="resize-handle-x"></div>
 
     <!-- Event Timeline (Right Panel) -->
     <div class="flex-1 flex flex-col overflow-hidden">
@@ -64,10 +71,119 @@
           <tbody id="event-body"></tbody>
         </table>
       </div>
+      <!-- Event Detail Panel -->
+      <div id="detail-handle" class="resize-handle-y hidden"></div>
+      <div id="detail-panel" class="hidden border-t border-base-300 flex flex-col bg-base-100" style="height:224px;min-height:80px;max-height:80vh;">
+        <div class="flex items-center justify-between px-3 py-2 border-b border-base-200 flex-shrink-0">
+          <div class="flex items-center gap-2">
+            <span id="detail-badge" class="badge badge-sm text-[10px]"></span>
+            <span id="detail-time" class="text-[10px] opacity-40"></span>
+          </div>
+          <button id="detail-close" class="btn btn-xs btn-ghost opacity-40">esc</button>
+        </div>
+        <div id="detail-content" class="flex-1 overflow-y-auto px-3 py-2"></div>
+      </div>
     </div>
 
   </div>
 
+  <!-- Help Dialog -->
+  <dialog id="help-dialog" class="modal">
+    <div class="modal-box max-w-2xl max-h-[80vh] p-0 flex flex-col">
+      <div class="sticky top-0 bg-base-100 z-10 px-6 pt-5 pb-3 border-b border-base-300">
+        <form method="dialog">
+          <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </form>
+        <h3 class="text-base font-bold">Connect your agent to AgentDog</h3>
+      </div>
+
+      <div class="px-6 py-4 overflow-y-auto flex-1 space-y-4 text-xs">
+        <!-- Claude Code -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <svg width="16" height="16" viewBox="0 0 248 248" fill="none" class="flex-shrink-0"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>
+            <span class="font-bold text-sm">Claude Code</span>
+          </div>
+          <p class="opacity-60 mb-2">Download the hook script and configure your settings:</p>
+          <div class="relative">
+            <pre id="claude-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
+            <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="claude-config">copy</button>
+          </div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <!-- Codex -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <svg width="16" height="16" viewBox="29 29 122 122" fill="currentColor" class="flex-shrink-0"><path d="M75.91 73.628V62.232c0-.96.36-1.68 1.199-2.16l22.912-13.194c3.119-1.8 6.838-2.639 10.676-2.639 14.394 0 23.511 11.157 23.511 23.032 0 .839 0 1.799-.12 2.758l-23.752-13.914c-1.439-.84-2.879-.84-4.318 0L75.91 73.627Zm53.499 44.383v-27.23c0-1.68-.72-2.88-2.159-3.719L97.142 69.55l9.836-5.638c.839-.48 1.559-.48 2.399 0l22.912 13.195c6.598 3.839 11.035 11.995 11.035 19.912 0 9.116-5.397 17.513-13.915 20.992v.001Zm-60.577-23.99-9.836-5.758c-.84-.48-1.2-1.2-1.2-2.16v-26.39c0-12.834 9.837-22.55 23.152-22.55 5.039 0 9.716 1.679 13.676 4.678L70.993 55.516c-1.44.84-2.16 2.039-2.16 3.719v34.787-.002Zm21.173 12.234L75.91 98.339V81.546l14.095-7.917 14.094 7.917v16.793l-14.094 7.916Zm9.056 36.467c-5.038 0-9.716-1.68-13.675-4.678l23.631-13.676c1.439-.839 2.159-2.038 2.159-3.718V85.863l9.956 5.757c.84.48 1.2 1.2 1.2 2.16v26.389c0 12.835-9.957 22.552-23.27 22.552v.001Zm-28.43-26.75L47.72 102.778c-6.599-3.84-11.036-11.996-11.036-19.913 0-9.236 5.518-17.513 14.034-20.992v27.35c0 1.68.72 2.879 2.16 3.718l29.989 17.393-9.837 5.638c-.84.48-1.56.48-2.399 0Zm-1.318 19.673c-13.555 0-23.512-10.196-23.512-22.792 0-.959.12-1.919.24-2.879l23.63 13.675c1.44.84 2.88.84 4.32 0l30.108-17.392v11.395c0 .96-.361 1.68-1.2 2.16l-22.912 13.194c-3.119 1.8-6.837 2.639-10.675 2.639Z"/></svg>
+            <span class="font-bold text-sm">Codex CLI</span>
+          </div>
+          <p class="opacity-60 mb-2">Pipe JSON output to AgentDog:</p>
+          <div class="relative">
+            <pre id="codex-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
+            <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="codex-config">copy</button>
+          </div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <!-- Claude Agent SDK (TypeScript) -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <svg width="16" height="16" viewBox="0 0 248 248" fill="none" class="flex-shrink-0"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>
+            <span class="font-bold text-sm">Agent SDK</span>
+            <span class="badge badge-ghost badge-xs">TypeScript</span>
+          </div>
+          <p class="opacity-60 mb-2">Stream events from <code class="bg-base-200 px-1 rounded">@anthropic-ai/claude-agent-sdk</code>:</p>
+          <div class="relative">
+            <pre id="agent-sdk-ts-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
+            <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="agent-sdk-ts-config">copy</button>
+          </div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <!-- Claude Agent SDK (Python) -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <svg width="16" height="16" viewBox="0 0 248 248" fill="none" class="flex-shrink-0"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>
+            <span class="font-bold text-sm">Agent SDK</span>
+            <span class="badge badge-ghost badge-xs">Python</span>
+          </div>
+          <p class="opacity-60 mb-2">Stream events from <code class="bg-base-200 px-1 rounded">claude-agent-sdk</code>:</p>
+          <div class="relative">
+            <pre id="agent-sdk-py-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
+            <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="agent-sdk-py-config">copy</button>
+          </div>
+        </div>
+
+        <div class="divider my-1"></div>
+
+        <!-- curl test -->
+        <div>
+          <div class="flex items-center gap-2 mb-2">
+            <i data-lucide="send" class="w-4 h-4 opacity-60"></i>
+            <span class="font-bold text-sm">Quick test</span>
+          </div>
+          <div class="relative">
+            <pre id="curl-config" class="bg-base-200 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed"></pre>
+            <button class="btn btn-xs btn-ghost absolute top-2 right-2 copy-btn" data-target="curl-config">copy</button>
+          </div>
+        </div>
+
+      </div>
+      <div class="sticky bottom-0 bg-base-100 border-t border-base-300 px-6 py-3">
+        <div class="opacity-40 text-[10px] flex items-center gap-2">
+          <i data-lucide="keyboard" class="w-3 h-3"></i>
+          <p><b>Keyboard:</b> j/k navigate, Enter/l to view events, Escape/h back to sessions, ? help</p>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <script src="https://unpkg.com/lucide@latest"></script>
   <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
   <script src="/app.js"></script>
 </body>

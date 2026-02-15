@@ -1,8 +1,9 @@
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { migrate } from 'drizzle-orm/bun-sqlite/migrator'
 import { eq, desc, sql } from 'drizzle-orm'
 import { sessions, events } from './schema'
-import type { AgentDogEvent, Session } from '../types'
+import type { AgentDogEvent, Session, UserInfo } from '../types'
 
 const DB_PATH = process.env.AGENT_DOG_DB ?? 'agent-dog.db'
 
@@ -13,37 +14,7 @@ function createDb(dbPath: string = DB_PATH) {
   sqlite.run('PRAGMA journal_mode = WAL')
   const db = drizzle(sqlite)
 
-  // Create tables if not exist
-  sqlite.run(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      source TEXT NOT NULL,
-      start_time INTEGER NOT NULL,
-      last_event_time INTEGER NOT NULL,
-      status TEXT DEFAULT 'active',
-      metadata TEXT DEFAULT '{}'
-    )
-  `)
-  sqlite.run(`
-    CREATE TABLE IF NOT EXISTS events (
-      id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL REFERENCES sessions(id),
-      timestamp INTEGER NOT NULL,
-      source TEXT NOT NULL,
-      category TEXT NOT NULL,
-      type TEXT NOT NULL,
-      role TEXT,
-      text TEXT,
-      tool_name TEXT,
-      tool_input TEXT,
-      tool_output TEXT,
-      error TEXT,
-      meta TEXT DEFAULT '{}'
-    )
-  `)
-  sqlite.run(`
-    CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id, timestamp)
-  `)
+  migrate(db, { migrationsFolder: './drizzle' })
 
   return { db, sqlite }
 }
@@ -99,6 +70,12 @@ export function addEvent(event: AgentDogEvent) {
       .set({ status: 'error', lastEventTime: now })
       .where(eq(sessions.id, event.sessionId))
       .run()
+  } else if (existing && existing.status === 'completed') {
+    // Reactivate if new events come in after completion
+    db.update(sessions)
+      .set({ status: 'active', lastEventTime: now })
+      .where(eq(sessions.id, event.sessionId))
+      .run()
   }
 
   // Insert event
@@ -119,6 +96,16 @@ export function addEvent(event: AgentDogEvent) {
   }).run()
 }
 
+const STALE_TIMEOUT = 2 * 60 * 1000 // 2 minutes
+
+function deriveStatus(status: string, lastEventTime: number): Session['status'] {
+  if (status === 'error') return 'error'
+  if (status === 'completed') return 'completed'
+  // Auto-complete active sessions after inactivity
+  if (Date.now() - lastEventTime > STALE_TIMEOUT) return 'completed'
+  return 'active'
+}
+
 export function getSession(id: string): Session | null {
   const db = getDb()
   const row = db.select().from(sessions).where(eq(sessions.id, id)).get()
@@ -130,12 +117,20 @@ export function getSession(id: string): Session | null {
     .where(eq(events.sessionId, id))
     .all()
 
+  const lastEvent = db.select({ type: events.type })
+    .from(events)
+    .where(eq(events.sessionId, id))
+    .orderBy(desc(events.timestamp))
+    .limit(1)
+    .get()
+
   return {
     id: row.id,
     source: row.source as Session['source'],
     startTime: row.startTime,
     lastEventTime: row.lastEventTime,
-    status: row.status as Session['status'],
+    status: deriveStatus(row.status!, row.lastEventTime),
+    lastEventType: lastEvent?.type ?? null,
     eventCount: countResult.count,
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
   }
@@ -175,16 +170,41 @@ export function listSessions(): Session[] {
       .where(eq(events.sessionId, row.id))
       .all()
 
+    const lastEvent = db.select({ type: events.type })
+      .from(events)
+      .where(eq(events.sessionId, row.id))
+      .orderBy(desc(events.timestamp))
+      .limit(1)
+      .get()
+
     return {
       id: row.id,
       source: row.source as Session['source'],
       startTime: row.startTime,
       lastEventTime: row.lastEventTime,
-      status: row.status as Session['status'],
+      status: deriveStatus(row.status!, row.lastEventTime),
+      lastEventType: lastEvent?.type ?? null,
       eventCount: countResult.count,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
     }
   })
+}
+
+export function updateSessionMeta(id: string, meta: Record<string, unknown>) {
+  const db = getDb()
+  const row = db.select({ metadata: sessions.metadata }).from(sessions).where(eq(sessions.id, id)).get()
+  if (!row) return
+  const existing = (row.metadata ?? {}) as Record<string, unknown>
+  db.update(sessions)
+    .set({ metadata: { ...existing, ...meta } })
+    .where(eq(sessions.id, id))
+    .run()
+}
+
+export function deleteSession(id: string) {
+  const db = getDb()
+  db.delete(events).where(eq(events.sessionId, id)).run()
+  db.delete(sessions).where(eq(sessions.id, id)).run()
 }
 
 export function clearAll() {

@@ -117,8 +117,9 @@ describe('Claude Code Streaming', () => {
     expect(testClient.events[7].toolName).toBe('Bash')
     expect(testClient.events[7].toolOutput).toBe('3 tests passed')
 
-    expect(testClient.events[8].type).toBe('session.end')
-    expect(testClient.events[8].category).toBe('session')
+    expect(testClient.events[8].type).toBe('message.assistant')
+    expect(testClient.events[8].category).toBe('message')
+    expect(testClient.events[8].role).toBe('assistant')
 
     testClient.close()
   })
@@ -130,6 +131,7 @@ describe('Claude Code Streaming', () => {
     expect(session).toBeDefined()
     expect(session.eventCount).toBe(9)
     expect(session.source).toBe('claude-code')
+    expect(session.lastEventType).toBe('message.assistant')
   })
 
   test('GET /api/sessions/:id returns all events', async () => {
@@ -137,16 +139,17 @@ describe('Claude Code Streaming', () => {
     const data = await res.json() as any
     expect(data.id).toBe(SESSION_ID)
     expect(data.events.length).toBe(9)
-    expect(data.status).toBe('completed')
+    // Session is still active (Stop maps to message.assistant, not session.end)
+    expect(data.status).toBe('active')
 
     for (let i = 1; i < data.events.length; i++) {
       expect(data.events[i].timestamp).toBeGreaterThanOrEqual(data.events[i - 1].timestamp)
     }
   })
 
-  test('session status transitions from active to completed', async () => {
+  test('session status is active right after events', async () => {
     const res = await fetch(`${srv.url}/api/sessions/${SESSION_ID}`)
     const data = await res.json() as any
-    expect(data.status).toBe('completed')
+    expect(data.status).toBe('active')
   })
 })
