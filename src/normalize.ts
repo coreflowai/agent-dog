@@ -217,7 +217,246 @@ export function normalizeCodex(payload: IngestPayload): AgentFlowEvent {
   }
 }
 
+export function normalizeOpencode(payload: IngestPayload): AgentFlowEvent {
+  const { sessionId, event } = payload
+  const now = Date.now()
+
+  const base: AgentFlowEvent = {
+    id: generateId(),
+    sessionId,
+    timestamp: (event.timestamp as number) ?? now,
+    source: 'opencode',
+    category: 'system',
+    type: (event.type ?? '') as string,
+    role: null,
+    text: null,
+    toolName: null,
+    toolInput: null,
+    toolOutput: null,
+    error: null,
+    meta: {},
+  }
+
+  const properties = event.properties as Record<string, unknown> | undefined
+  const isPluginEvent = properties !== undefined
+
+  if (isPluginEvent) {
+    return normalizeOpencodePlugin(base, event, properties!)
+  }
+
+  return normalizeOpencodeJsonl(base, event)
+}
+
+function normalizeOpencodePlugin(
+  base: AgentFlowEvent,
+  event: Record<string, unknown>,
+  properties: Record<string, unknown>,
+): AgentFlowEvent {
+  const eventType = (event.type ?? '') as string
+  const info = (properties.info ?? {}) as Record<string, unknown>
+
+  switch (eventType) {
+    case 'session.created':
+      return {
+        ...base,
+        category: 'session',
+        type: 'session.start',
+        meta: info.title ? { title: info.title } : {},
+      }
+
+    case 'session.idle':
+    case 'session.deleted':
+      return { ...base, category: 'session', type: 'session.end' }
+
+    case 'session.error':
+      return {
+        ...base,
+        category: 'error',
+        type: 'error',
+        error: (properties.error ?? null) as string | null,
+      }
+
+    case 'session.status':
+      return {
+        ...base,
+        category: 'system',
+        type: 'session.status',
+        meta: properties.status ? { status: properties.status } : {},
+      }
+
+    case 'message.updated': {
+      const msg = (properties.message ?? properties) as Record<string, unknown>
+      const role = (msg.role ?? '') as string
+      if (role === 'user') {
+        return {
+          ...base,
+          category: 'message',
+          type: 'message.user',
+          role: 'user',
+          text: (msg.content ?? msg.text ?? null) as string | null,
+        }
+      }
+      return {
+        ...base,
+        category: 'message',
+        type: 'message.assistant',
+        role: 'assistant',
+        text: (msg.content ?? msg.text ?? null) as string | null,
+      }
+    }
+
+    case 'message.part.updated': {
+      const part = (properties.part ?? {}) as Record<string, unknown>
+      const partType = (part.type ?? '') as string
+      const status = (part.status ?? (part.state as Record<string, unknown>)?.status ?? '') as string
+
+      if (partType === 'text') {
+        return {
+          ...base,
+          category: 'message',
+          type: 'message.assistant',
+          role: 'assistant',
+          text: (part.text ?? part.content ?? null) as string | null,
+        }
+      }
+
+      if (partType === 'tool' || partType === 'tool-invocation' || partType === 'tool_use') {
+        const toolName = (part.toolName ?? part.tool_name ?? part.name ?? null) as string | null
+        if (status === 'completed') {
+          return {
+            ...base,
+            category: 'tool',
+            type: 'tool.end',
+            toolName,
+            toolInput: part.toolInput ?? part.input ?? null,
+            toolOutput: truncate(part.toolOutput ?? part.output ?? part.result ?? null),
+          }
+        }
+        if (status === 'error') {
+          return {
+            ...base,
+            category: 'tool',
+            type: 'tool.end',
+            toolName,
+            error: (part.error ?? null) as string | null,
+          }
+        }
+        // pending, running, or other
+        return {
+          ...base,
+          category: 'tool',
+          type: 'tool.start',
+          toolName,
+          toolInput: part.toolInput ?? part.input ?? null,
+        }
+      }
+
+      return { ...base, meta: { rawEvent: event } }
+    }
+
+    case 'tool.execute.before':
+      return {
+        ...base,
+        category: 'tool',
+        type: 'tool.start',
+        toolName: (event.tool ?? (properties as any).tool ?? null) as string | null,
+        toolInput: event.args ?? (properties as any).args ?? null,
+      }
+
+    case 'tool.execute.after':
+      return {
+        ...base,
+        category: 'tool',
+        type: 'tool.end',
+        toolName: (event.tool ?? (properties as any).tool ?? null) as string | null,
+        toolInput: event.args ?? (properties as any).args ?? null,
+        toolOutput: truncate(event.result ?? (properties as any).result ?? null),
+      }
+
+    default:
+      return { ...base, meta: { rawEvent: event } }
+  }
+}
+
+function normalizeOpencodeJsonl(
+  base: AgentFlowEvent,
+  event: Record<string, unknown>,
+): AgentFlowEvent {
+  const eventType = (event.type ?? '') as string
+  const part = (event.part ?? {}) as Record<string, unknown>
+  const state = (part.state ?? {}) as Record<string, unknown>
+
+  switch (eventType) {
+    case 'step_start':
+      return { ...base, category: 'system', type: 'step.start' }
+
+    case 'step_finish':
+      return { ...base, category: 'system', type: 'step.finish' }
+
+    case 'text':
+      return {
+        ...base,
+        category: 'message',
+        type: 'message.assistant',
+        role: 'assistant',
+        text: (part.text ?? event.text ?? null) as string | null,
+      }
+
+    case 'tool_use': {
+      const toolName = (part.toolName ?? part.tool_name ?? part.name ?? null) as string | null
+      const status = (state.status ?? '') as string
+      if (status === 'completed') {
+        return {
+          ...base,
+          category: 'tool',
+          type: 'tool.end',
+          toolName,
+          toolOutput: truncate(state.output ?? state.result ?? null),
+        }
+      }
+      if (status === 'error') {
+        return {
+          ...base,
+          category: 'tool',
+          type: 'tool.end',
+          toolName,
+          error: (state.error ?? null) as string | null,
+        }
+      }
+      return {
+        ...base,
+        category: 'tool',
+        type: 'tool.start',
+        toolName,
+        toolInput: state.input ?? part.input ?? null,
+      }
+    }
+
+    case 'reasoning':
+      return {
+        ...base,
+        category: 'system',
+        type: 'reasoning',
+        text: (part.text ?? event.text ?? null) as string | null,
+      }
+
+    case 'error':
+      return {
+        ...base,
+        category: 'error',
+        type: 'error',
+        error: (event.error ?? event.message ?? null) as string | null,
+      }
+
+    default:
+      return { ...base, meta: { rawEvent: event } }
+  }
+}
+
 export function normalize(payload: IngestPayload): AgentFlowEvent {
+  if (payload.source === 'opencode') {
+    return normalizeOpencode(payload)
+  }
   if (payload.source === 'codex') {
     return normalizeCodex(payload)
   }

@@ -52,7 +52,7 @@ describe('Claude Code Streaming', () => {
 
   beforeAll(() => {
     closeDb()
-    srv = createServer({ port: 0, dbPath, serveStatic: false })
+    srv = createServer({ port: 0, dbPath, serveStatic: false, authEnabled: false })
   })
 
   afterAll(() => {

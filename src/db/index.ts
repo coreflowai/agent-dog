@@ -26,6 +26,13 @@ export function getDb(dbPath?: string) {
   return _db.db
 }
 
+export function getSqlite(dbPath?: string) {
+  if (!_db) {
+    _db = createDb(dbPath)
+  }
+  return _db.sqlite
+}
+
 export function closeDb() {
   if (_db) {
     _db.sqlite.close()

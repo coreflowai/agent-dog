@@ -2,6 +2,7 @@ import { Server as Engine } from '@socket.io/bun-engine'
 import { Server as SocketIOServer } from 'socket.io'
 import { initDb, listSessions, getSessionEvents } from './db'
 import { createRouter } from './routes'
+import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -14,12 +15,27 @@ type ServerOptions = {
   port?: number
   dbPath?: string
   serveStatic?: boolean
+  authEnabled?: boolean
 }
 
+// Files accessible without authentication
+const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js'])
+
 export function createServer(options: ServerOptions = {}) {
-  const { port = 3333, dbPath, serveStatic = true } = options
+  const { port = 3333, dbPath, serveStatic = true, authEnabled = true } = options
 
   initDb(dbPath)
+
+  let auth: Auth | null = null
+  let authReady: Promise<void> | null = null
+
+  if (authEnabled) {
+    const baseURL = process.env.BETTER_AUTH_URL || `http://localhost:${port}`
+    auth = createAuth({ baseURL })
+    authReady = migrateAuth({ baseURL }).catch(err => {
+      console.error('Better Auth migration failed:', err)
+    })
+  }
 
   const io = new SocketIOServer()
   const engine = new Engine({ path: '/socket.io/' })
@@ -28,6 +44,26 @@ export function createServer(options: ServerOptions = {}) {
   const router = createRouter(io)
   const engineHandler = engine.handler()
   const publicDir = path.join(import.meta.dir, '..', 'public')
+
+  // Socket.IO auth middleware
+  if (authEnabled && auth) {
+    const authRef = auth
+    io.use(async (socket, next) => {
+      try {
+        const cookieHeader = socket.handshake.headers.cookie
+        if (!cookieHeader) return next(new Error('Authentication required'))
+        const headers = new Headers({ cookie: cookieHeader })
+        const session = await authRef.api.getSession({ headers })
+        if (session?.user) {
+          ;(socket.data as any).userId = session.user.id
+          return next()
+        }
+        next(new Error('Authentication required'))
+      } catch {
+        next(new Error('Authentication required'))
+      }
+    })
+  }
 
   // Socket.IO connection handling
   io.on('connection', (socket) => {
@@ -44,19 +80,66 @@ export function createServer(options: ServerOptions = {}) {
     })
   })
 
+  function serveHtml(filePath: string) {
+    const file = Bun.file(filePath)
+    return file.exists().then(async exists => {
+      if (!exists) return null
+      let html = await file.text()
+      html = html.replace(/(src|href)="(\/[^"]+\.(js|css))(\?[^"]*)?"/g, `$1="$2?v=${GIT_HASH}"`)
+      return new Response(html, {
+        headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' },
+      })
+    })
+  }
+
   const server = Bun.serve({
     port,
     idleTimeout: 30,
     async fetch(req, server) {
-      // Route Socket.IO requests to the engine
+      // Wait for auth migrations on first request
+      if (authReady) {
+        await authReady
+        authReady = null
+      }
+
       const url = new URL(req.url)
+
+      // Route Socket.IO requests to the engine
       if (url.pathname.startsWith('/socket.io/')) {
         return engine.handleRequest(req, server)
       }
 
-      // Try API routes
-      const apiResponse = await router(req)
-      if (apiResponse) return apiResponse
+      // Route Better Auth requests
+      if (auth && url.pathname.startsWith('/api/auth')) {
+        return auth.handler(req)
+      }
+
+      // API routes — require auth
+      if (url.pathname.startsWith('/api/')) {
+        if (auth) {
+          const { authenticated } = await authenticateRequest(req, auth)
+          if (!authenticated) {
+            return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' },
+            })
+          }
+        }
+        const apiResponse = await router(req)
+        if (apiResponse) return apiResponse
+      }
+
+      // Setup route (non-API, no /api/ prefix) — require auth
+      if (url.pathname === '/setup/hook.sh' || url.pathname === '/setup/opencode-plugin.ts') {
+        if (auth) {
+          const { authenticated } = await authenticateRequest(req, auth)
+          if (!authenticated) {
+            return new Response('Unauthorized', { status: 401 })
+          }
+        }
+        const apiResponse = await router(req)
+        if (apiResponse) return apiResponse
+      }
 
       // Static file serving
       if (serveStatic) {
@@ -64,16 +147,34 @@ export function createServer(options: ServerOptions = {}) {
         const filePath = path.join(publicDir, isIndex ? 'index.html' : url.pathname)
 
         if (filePath.startsWith(publicDir)) {
+          // Public files (login page, auth client) — no auth required
+          if (PUBLIC_FILES.has(url.pathname)) {
+            try {
+              const file = Bun.file(filePath)
+              if (await file.exists()) {
+                if (filePath.endsWith('.html')) {
+                  return (await serveHtml(filePath))!
+                }
+                return new Response(file, {
+                  headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
+                })
+              }
+            } catch {}
+          }
+
+          // Protected static files — redirect to login if no session
+          if (auth) {
+            const { authenticated } = await authenticateRequest(req, auth)
+            if (!authenticated) {
+              return Response.redirect(new URL('/login.html', req.url).toString(), 302)
+            }
+          }
+
           try {
             const file = Bun.file(filePath)
             if (await file.exists()) {
-              // Rewrite HTML to inject git hash for cache-busting
               if (filePath.endsWith('.html')) {
-                let html = await file.text()
-                html = html.replace(/(src|href)="(\/[^"]+\.(js|css))(\?[^"]*)?"/g, `$1="$2?v=${GIT_HASH}"`)
-                return new Response(html, {
-                  headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' },
-                })
+                return (await serveHtml(filePath))!
               }
               return new Response(file, {
                 headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
@@ -81,15 +182,9 @@ export function createServer(options: ServerOptions = {}) {
             }
           } catch {}
 
-          // Fallback to index.html
-          const indexFile = Bun.file(path.join(publicDir, 'index.html'))
-          if (await indexFile.exists()) {
-            let html = await indexFile.text()
-            html = html.replace(/(src|href)="(\/[^"]+\.(js|css))(\?[^"]*)?"/g, `$1="$2?v=${GIT_HASH}"`)
-            return new Response(html, {
-              headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' },
-            })
-          }
+          // Fallback to index.html (SPA)
+          const resp = await serveHtml(path.join(publicDir, 'index.html'))
+          if (resp) return resp
         }
       }
 
@@ -101,6 +196,7 @@ export function createServer(options: ServerOptions = {}) {
   return {
     server,
     io,
+    auth,
     url: `http://localhost:${server.port}`,
     close: () => {
       io.close()

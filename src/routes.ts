@@ -118,6 +118,7 @@ export function createRouter(io: SocketIOServer) {
 # Reads hook JSON from stdin, POSTs to AgentFlow server
 # Captures user identity from git config and GitHub CLI
 AGENT_FLOW_URL="\${AGENT_FLOW_URL:-${origin}}"
+AGENT_FLOW_API_KEY="\${AGENT_FLOW_API_KEY:-}"
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id')
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name')
@@ -146,6 +147,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ] || [ "$HOOK_EVENT" = "Stop" ]; then
         else
           curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \\
             -H "Content-Type: application/json" \\
+            \${AGENT_FLOW_API_KEY:+-H "x-api-key: $AGENT_FLOW_API_KEY"} \\
             -d "$(jq -n --arg s "$SESSION_ID" --arg msg "$NEW_TEXT" \\
               '{source:"claude-code",sessionId:$s,event:{hook_event_name:"message.assistant",session_id:$s,message:$msg}}')" &
         fi
@@ -186,12 +188,79 @@ USER_OBJ=$(jq -n \\
 
 curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \\
   -H "Content-Type: application/json" \\
+  \${AGENT_FLOW_API_KEY:+-H "x-api-key: $AGENT_FLOW_API_KEY"} \\
   -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$INPUT" --argjson u "$USER_OBJ" \\
     '{source:"claude-code",sessionId:$s,event:$e,user:$u}')" &
 exit 0
 `
       return new Response(script, {
         headers: { 'Content-Type': 'text/plain', 'Content-Disposition': 'attachment; filename="agent-flow-hook.sh"' },
+      })
+    }
+
+    // GET /setup/opencode-plugin.ts - serves the Open Code plugin with correct URL
+    if (req.method === 'GET' && pathname === '/setup/opencode-plugin.ts') {
+      const proto = req.headers.get('x-forwarded-proto') || 'http'
+      const origin = req.headers.get('host') ? `${proto}://${req.headers.get('host')}` : 'http://localhost:3333'
+      const script = `/**
+ * AgentFlow - Open Code Plugin Adapter
+ *
+ * Install: copy to .opencode/plugin/agent-flow.ts (project) or ~/.config/opencode/plugin/agent-flow.ts (global)
+ */
+
+const AGENT_FLOW_URL = process.env.AGENT_FLOW_URL || "${origin}";
+const AGENT_FLOW_API_KEY = process.env.AGENT_FLOW_API_KEY || "";
+
+function getUser() {
+  try {
+    const name = require("child_process").execSync("git config user.name", { encoding: "utf-8" }).trim();
+    const email = require("child_process").execSync("git config user.email", { encoding: "utf-8" }).trim();
+    const osUser = process.env.USER || require("os").userInfo().username;
+    const user: Record<string, unknown> = {};
+    if (name) user.name = name;
+    if (email) user.email = email;
+    if (osUser) user.osUser = osUser;
+    return user;
+  } catch {
+    return undefined;
+  }
+}
+
+const user = getUser();
+
+function post(sessionId: string, event: Record<string, unknown>) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (AGENT_FLOW_API_KEY) headers["x-api-key"] = AGENT_FLOW_API_KEY;
+  fetch(AGENT_FLOW_URL + "/api/ingest", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ source: "opencode", sessionId, event, ...(user ? { user } : {}) }),
+  }).catch(() => {});
+}
+
+function extractSessionId(event: any): string | null {
+  if (event.properties?.info?.id) return event.properties.info.id;
+  if (event.properties?.sessionID) return event.properties.sessionID;
+  if (event.properties?.info?.sessionID) return event.properties.info.sessionID;
+  if (event.properties?.session?.id) return event.properties.session.id;
+  if (event.sessionId) return event.sessionId;
+  return null;
+}
+
+export default {
+  name: "agent-flow",
+  event(event: any) {
+    const sessionId = extractSessionId(event);
+    if (!sessionId) return;
+    post(sessionId, { type: event.type, properties: event.properties });
+  },
+};
+`
+      return new Response(script, {
+        headers: {
+          'Content-Type': 'text/plain',
+          'Content-Disposition': 'attachment; filename="agent-flow.ts"',
+        },
       })
     }
 

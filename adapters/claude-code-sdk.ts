@@ -18,11 +18,13 @@ type HookEvent = {
   [key: string]: unknown
 }
 
-async function postEvent(url: string, sessionId: string, event: Record<string, unknown>, user?: UserInfo) {
+async function postEvent(url: string, sessionId: string, event: Record<string, unknown>, user?: UserInfo, apiKey?: string) {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiKey) headers['x-api-key'] = apiKey
     await fetch(`${url}/api/ingest`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         source: 'claude-code' as const,
         sessionId,
@@ -35,41 +37,41 @@ async function postEvent(url: string, sessionId: string, event: Record<string, u
   }
 }
 
-export function createAgentFlowHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo) {
+export function createAgentFlowHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo, apiKey?: string) {
   return {
     onSessionStart: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'SessionStart',
-      }, user)
+      }, user, apiKey)
     },
 
     onUserPromptSubmit: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'UserPromptSubmit',
-      }, user)
+      }, user, apiKey)
     },
 
     onPreToolUse: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'PreToolUse',
-      }, user)
+      }, user, apiKey)
     },
 
     onPostToolUse: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'PostToolUse',
-      }, user)
+      }, user, apiKey)
     },
 
     onStop: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'Stop',
-      }, user)
+      }, user, apiKey)
     },
   }
 }

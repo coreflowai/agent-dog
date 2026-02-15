@@ -2,7 +2,7 @@ export type AgentFlowEvent = {
   id: string
   sessionId: string
   timestamp: number
-  source: 'claude-code' | 'codex'
+  source: 'claude-code' | 'codex' | 'opencode'
   category: 'session' | 'message' | 'tool' | 'error' | 'system'
   type: string
   role: 'user' | 'assistant' | 'system' | null
@@ -16,7 +16,7 @@ export type AgentFlowEvent = {
 
 export type Session = {
   id: string
-  source: 'claude-code' | 'codex'
+  source: 'claude-code' | 'codex' | 'opencode'
   startTime: number
   lastEventTime: number
   status: 'active' | 'completed' | 'error'
@@ -36,7 +36,7 @@ export type UserInfo = {
 }
 
 export type IngestPayload = {
-  source: 'claude-code' | 'codex'
+  source: 'claude-code' | 'codex' | 'opencode'
   sessionId: string
   event: Record<string, unknown>
   user?: UserInfo
