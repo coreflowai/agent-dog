@@ -3,6 +3,12 @@ import { Server as SocketIOServer } from 'socket.io'
 import { initDb, listSessions, getSessionEvents } from './db'
 import { createRouter } from './routes'
 import path from 'path'
+import { execSync } from 'child_process'
+
+const GIT_HASH = (() => {
+  try { return execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim() }
+  catch { return Date.now().toString(36) }
+})()
 
 type ServerOptions = {
   port?: number
@@ -54,14 +60,23 @@ export function createServer(options: ServerOptions = {}) {
 
       // Static file serving
       if (serveStatic) {
-        const filePath = path.join(publicDir, url.pathname === '/' ? 'index.html' : url.pathname)
+        const isIndex = url.pathname === '/'
+        const filePath = path.join(publicDir, isIndex ? 'index.html' : url.pathname)
 
         if (filePath.startsWith(publicDir)) {
           try {
             const file = Bun.file(filePath)
             if (await file.exists()) {
+              // Rewrite HTML to inject git hash for cache-busting
+              if (filePath.endsWith('.html')) {
+                let html = await file.text()
+                html = html.replace(/(src|href)="(\/[^"]+\.(js|css))(\?[^"]*)?"/g, `$1="$2?v=${GIT_HASH}"`)
+                return new Response(html, {
+                  headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' },
+                })
+              }
               return new Response(file, {
-                headers: { 'Cache-Control': 'no-cache' },
+                headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
               })
             }
           } catch {}
@@ -69,7 +84,11 @@ export function createServer(options: ServerOptions = {}) {
           // Fallback to index.html
           const indexFile = Bun.file(path.join(publicDir, 'index.html'))
           if (await indexFile.exists()) {
-            return new Response(indexFile, { headers: { 'Content-Type': 'text/html' } })
+            let html = await indexFile.text()
+            html = html.replace(/(src|href)="(\/[^"]+\.(js|css))(\?[^"]*)?"/g, `$1="$2?v=${GIT_HASH}"`)
+            return new Response(html, {
+              headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache' },
+            })
           }
         }
       }
