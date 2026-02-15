@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="wireframe">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentDog</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@100..900&display=swap" rel="stylesheet" />
+  <style type="text/tailwindcss">
+    @theme {
+      --font-mono: 'Geist Mono', monospace;
+    }
+    body { min-height: 100vh; font-family: 'Geist Mono', monospace; }
+    .session-item { cursor: pointer; outline: none; }
+    .session-item.active { background: oklch(var(--color-base-200)); }
+    .session-item:focus-visible { outline: 2px solid oklch(var(--color-primary)); outline-offset: -2px; }
+    .event-row { outline: none; }
+    .event-row:focus-visible { outline: 2px solid oklch(var(--color-primary)); outline-offset: -2px; }
+    .event-row.selected { background: oklch(var(--color-base-200)); }
+    .event-detail { max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+  <!-- Navbar -->
+  <div class="navbar bg-base-300 shadow-sm px-4 min-h-10 h-10">
+    <div class="flex-1">
+      <span class="text-sm font-bold tracking-tight">AgentDog</span>
+      <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
+    </div>
+    <div class="flex-none gap-2">
+      <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
+      <button id="btn-clear" class="btn btn-xs btn-error btn-outline">Clear</button>
+    </div>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="flex h-[calc(100vh-2.5rem)]">
+
+    <!-- Session List (Left Panel) -->
+    <div class="w-64 min-w-64 border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col">
+      <div class="px-3 py-2 border-b border-base-300">
+        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Sessions</span>
+      </div>
+      <div id="session-list" class="flex-1 overflow-y-auto" tabindex="-1">
+        <div class="p-4 text-center opacity-40 text-xs">No sessions yet</div>
+      </div>
+    </div>
+
+    <!-- Event Timeline (Right Panel) -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div id="empty-state" class="flex items-center justify-center flex-1">
+        <div class="text-center opacity-40">
+          <p class="text-sm mb-1">Select a session to view events</p>
+          <p class="text-[10px]">Events stream here in real-time</p>
+        </div>
+      </div>
+      <div id="event-panel" class="flex-1 overflow-y-auto hidden" tabindex="-1">
+        <table id="event-table" class="w-full">
+          <tbody id="event-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
