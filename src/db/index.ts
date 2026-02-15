@@ -142,6 +142,7 @@ export function getSession(id: string): Session | null {
     lastEventText: deriveEventText(lastEvent),
     eventCount: countResult.count,
     metadata: (row.metadata ?? {}) as Record<string, unknown>,
+    userId: row.userId ?? null,
   }
 }
 
@@ -168,9 +169,12 @@ export function getSessionEvents(sessionId: string): AgentDogEvent[] {
     }))
 }
 
-export function listSessions(): Session[] {
+export function listSessions(userId?: string): Session[] {
   const db = getDb()
-  const rows = db.select().from(sessions).orderBy(desc(sessions.lastEventTime)).all()
+  const query = userId
+    ? db.select().from(sessions).where(eq(sessions.userId, userId)).orderBy(desc(sessions.lastEventTime))
+    : db.select().from(sessions).orderBy(desc(sessions.lastEventTime))
+  const rows = query.all()
 
   return rows.map(row => {
     const [countResult] = db
@@ -196,8 +200,19 @@ export function listSessions(): Session[] {
       lastEventText: deriveEventText(lastEvent),
       eventCount: countResult.count,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
+      userId: row.userId ?? null,
     }
   })
+}
+
+export function updateSessionUserId(id: string, userId: string) {
+  const db = getDb()
+  const row = db.select({ userId: sessions.userId }).from(sessions).where(eq(sessions.id, id)).get()
+  if (!row || row.userId) return // only set if not already set
+  db.update(sessions)
+    .set({ userId })
+    .where(eq(sessions.id, id))
+    .run()
 }
 
 export function updateSessionMeta(id: string, meta: Record<string, unknown>) {

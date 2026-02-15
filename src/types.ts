@@ -24,6 +24,7 @@ export type Session = {
   lastEventText: string | null
   eventCount: number
   metadata: Record<string, unknown>
+  userId?: string | null
 }
 
 export type UserInfo = {

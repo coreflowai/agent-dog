@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { resolve } from 'path'
 import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
-import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta } from './db'
+import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId } from './db'
 import type { IngestPayload } from './types'
 
 function expandPath(p: string): string {
@@ -65,6 +65,8 @@ export function createRouter(io: SocketIOServer) {
         // Persist user info into session metadata
         if (payload.user && Object.keys(payload.user).length > 0) {
           updateSessionMeta(event.sessionId, { user: payload.user })
+          const userId = payload.user.githubUsername || payload.user.email || payload.user.osUser || null
+          if (userId) updateSessionUserId(event.sessionId, userId)
         }
 
         // Broadcast to Socket.IO subscribers
@@ -79,7 +81,8 @@ export function createRouter(io: SocketIOServer) {
 
     // GET /api/sessions
     if (req.method === 'GET' && pathname === '/api/sessions') {
-      return json(listSessions())
+      const userId = url.searchParams.get('userId') || undefined
+      return json(listSessions(userId))
     }
 
     // GET /api/sessions/:id

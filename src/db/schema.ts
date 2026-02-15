@@ -7,6 +7,7 @@ export const sessions = sqliteTable('sessions', {
   lastEventTime: integer('last_event_time').notNull(),
   status: text('status').default('active'),
   metadata: text('metadata', { mode: 'json' }).default('{}'),
+  userId: text('user_id'),
 })
 
 export const events = sqliteTable('events', {

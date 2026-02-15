@@ -2,6 +2,8 @@
 const socket = io({ transports: ['websocket'] })
 
 let sessions = []
+let filteredSessions = []
+let currentUserFilter = ''
 let currentSessionId = null
 let currentEvents = []
 let selectedSessionIdx = -1
@@ -17,13 +19,45 @@ const eventBody = document.getElementById('event-body')
 const eventPanel = document.getElementById('event-panel')
 const emptyState = document.getElementById('empty-state')
 const connectionStatus = document.getElementById('connection-status')
-const btnClear = document.getElementById('btn-clear')
 const detailPanel = document.getElementById('detail-panel')
 const detailBadge = document.getElementById('detail-badge')
 const detailTime = document.getElementById('detail-time')
 const detailContent = document.getElementById('detail-content')
 const detailClose = document.getElementById('detail-close')
 const detailHandle = document.getElementById('detail-handle')
+const userFilter = document.getElementById('user-filter')
+
+// --- User filter ---
+userFilter.addEventListener('change', () => {
+  currentUserFilter = userFilter.value
+  applyFilter()
+})
+
+function applyFilter() {
+  filteredSessions = currentUserFilter
+    ? sessions.filter(s => s.userId === currentUserFilter)
+    : sessions
+  renderSessionList()
+  if (currentSessionId && !filteredSessions.find(s => s.id === currentSessionId)) {
+    if (filteredSessions.length > 0) {
+      selectedSessionIdx = 0
+      selectSession(filteredSessions[0].id)
+    } else {
+      currentSessionId = null
+      currentEvents = []
+      selectedSessionIdx = -1
+      selectedEventIdx = -1
+      showEmptyState()
+    }
+  }
+}
+
+function updateUserFilterDropdown() {
+  const users = [...new Set(sessions.map(s => s.userId).filter(Boolean))].sort()
+  const prev = userFilter.value
+  userFilter.innerHTML = '<option value="">All users</option>' +
+    users.map(u => `<option value="${esc(u)}"${u === prev ? ' selected' : ''}>${esc(u)}</option>`).join('')
+}
 
 // --- Connection ---
 socket.on('connect', () => {
@@ -38,10 +72,11 @@ socket.on('disconnect', () => {
 // --- Sessions ---
 socket.on('sessions:list', (list) => {
   sessions = list
-  renderSessionList()
-  if (!currentSessionId && sessions.length > 0) {
+  updateUserFilterDropdown()
+  applyFilter()
+  if (!currentSessionId && filteredSessions.length > 0) {
     selectedSessionIdx = 0
-    selectSession(sessions[0].id)
+    selectSession(filteredSessions[0].id)
   }
 })
 
@@ -51,8 +86,9 @@ socket.on('session:update', (session) => {
   const idx = sessions.findIndex(s => s.id === session.id)
   if (idx >= 0) sessions[idx] = session
   else sessions.unshift(session)
-  renderSessionList()
-  if (isNew) {
+  updateUserFilterDropdown()
+  applyFilter()
+  if (isNew && (!currentUserFilter || session.userId === currentUserFilter)) {
     selectedSessionIdx = 0
     selectSession(session.id)
   }
@@ -79,12 +115,6 @@ socket.on('event', (event) => {
   if (event.sessionId !== currentSessionId) return
   currentEvents.push(event)
   renderEvents()
-})
-
-// --- Clear current session ---
-btnClear.addEventListener('click', async () => {
-  if (!currentSessionId) return
-  await fetch(`/api/sessions/${currentSessionId}`, { method: 'DELETE' })
 })
 
 socket.on('session:deleted', (id) => {
@@ -118,6 +148,7 @@ document.addEventListener('keydown', (e) => {
       focusArea = 'sessions'
       sessionList.focus()
       highlightSession()
+      mobileBack()
     }
     return
   }
@@ -127,6 +158,7 @@ document.addEventListener('keydown', (e) => {
     focusArea = 'sessions'
     sessionList.focus()
     highlightSession()
+    mobileBack()
     return
   }
 
@@ -273,6 +305,7 @@ function selectSession(sessionId) {
   detailPanel.classList.add('hidden'); detailHandle.classList.add('hidden')
   socket.emit('subscribe', sessionId)
   renderSessionList()
+  mobileShowEvents()
 }
 
 function showEmptyState() {
@@ -280,6 +313,7 @@ function showEmptyState() {
   eventPanel.classList.add('hidden')
   detailPanel.classList.add('hidden'); detailHandle.classList.add('hidden')
   eventBody.innerHTML = ''
+  mobileBack()
 }
 
 // --- Render events ---
@@ -725,6 +759,33 @@ function setupResize(handleId, target, axis) {
 
 setupResize('sidebar-handle', 'sidebar', 'x')
 setupResize('detail-handle', 'detail-panel', 'y')
+
+// --- Mobile responsive ---
+const sidebar = document.getElementById('sidebar')
+const mainPanel = document.getElementById('main-panel')
+
+function isMobile() { return window.innerWidth < 768 }
+
+function mobileShowEvents() {
+  if (!isMobile()) return
+  sidebar.classList.add('mobile-hidden')
+  mainPanel.classList.remove('mobile-hidden')
+}
+
+function mobileBack() {
+  if (!isMobile()) return
+  mainPanel.classList.add('mobile-hidden')
+  sidebar.classList.remove('mobile-hidden')
+  focusArea = 'sessions'
+}
+
+// On resize, remove mobile classes if switching to desktop
+window.addEventListener('resize', () => {
+  if (!isMobile()) {
+    sidebar.classList.remove('mobile-hidden')
+    mainPanel.classList.remove('mobile-hidden')
+  }
+})
 
 // Init Lucide icons
 lucide.createIcons()

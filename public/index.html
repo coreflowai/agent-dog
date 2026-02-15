@@ -29,6 +29,17 @@
     .resize-handle-y:hover, .resize-handle-y.active { background: oklch(70% 0.1 250); }
     @keyframes spin { to { transform: rotate(360deg); } }
     .css-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; opacity: 0.6; }
+
+    /* Mobile responsive */
+    @media (max-width: 767px) {
+      #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+      #sidebar-handle { display: none !important; }
+      #sidebar.mobile-hidden { display: none !important; }
+      #main-panel.mobile-hidden { display: none !important; }
+      #mobile-back { display: flex !important; }
+      .resize-handle-y { display: none !important; }
+      #detail-panel { max-height: 50vh !important; }
+    }
   </style>
 </head>
 <body class="bg-base-100 text-base-content">
@@ -42,7 +53,6 @@
     <div class="flex-none gap-2">
       <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
-      <button id="btn-clear" class="btn btn-xs btn-ghost opacity-40" title="Clear current session">Clear</button>
     </div>
   </div>
 
@@ -51,8 +61,11 @@
 
     <!-- Session List (Left Panel) -->
     <div id="sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:256px;min-width:120px;max-width:50vw;">
-      <div class="px-3 py-2 border-b border-base-300">
+      <div class="px-3 py-2 border-b border-base-300 flex items-center justify-between gap-2">
         <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Sessions</span>
+        <select id="user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
+          <option value="">All users</option>
+        </select>
       </div>
       <div id="session-list" class="flex-1 overflow-y-auto" tabindex="-1">
         <div class="p-4 text-center opacity-40 text-xs">No sessions yet</div>
@@ -61,7 +74,12 @@
     <div id="sidebar-handle" class="resize-handle-x"></div>
 
     <!-- Event Timeline (Right Panel) -->
-    <div class="flex-1 flex flex-col overflow-hidden">
+    <div id="main-panel" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Mobile back button (hidden on desktop) -->
+      <div id="mobile-back" class="hidden items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 cursor-pointer" onclick="mobileBack()">
+        <span class="text-xs opacity-60">&larr;</span>
+        <span class="text-xs opacity-60">Sessions</span>
+      </div>
       <div id="empty-state" class="flex items-center justify-center flex-1">
         <div class="text-center opacity-40">
           <p class="text-sm mb-1">Select a session to view events</p>
