@@ -105,15 +105,38 @@ function updateUserFilterDropdown() {
 }
 
 // --- Connection ---
+function setConnectionState(state) {
+  const dot = document.getElementById('connection-dot')
+  const overlay = document.getElementById('connection-overlay')
+  const overlayText = document.getElementById('connection-overlay-text')
+
+  if (state === 'connected') {
+    connectionStatus.textContent = 'connected'
+    connectionStatus.className = 'badge badge-sm badge-success text-[10px] hidden sm:inline-flex'
+    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-success'
+    if (overlay) overlay.classList.add('hidden')
+  } else if (state === 'disconnected') {
+    connectionStatus.textContent = 'disconnected'
+    connectionStatus.className = 'badge badge-sm badge-error text-[10px] hidden sm:inline-flex'
+    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-error'
+    if (overlay) overlay.classList.remove('hidden')
+    if (overlayText) overlayText.textContent = 'Reconnecting...'
+  } else {
+    connectionStatus.textContent = 'connecting...'
+    connectionStatus.className = 'badge badge-sm badge-outline text-[10px] hidden sm:inline-flex'
+    if (dot) dot.className = 'sm:hidden w-2 h-2 rounded-full bg-base-300 animate-pulse'
+    if (overlay) overlay.classList.remove('hidden')
+    if (overlayText) overlayText.textContent = 'Connecting...'
+  }
+}
+
 socket.on('connect', () => {
-  connectionStatus.textContent = 'connected'
-  connectionStatus.className = 'badge badge-sm badge-success text-[10px]'
+  setConnectionState('connected')
   // Re-subscribe to current session after reconnect
   if (currentSessionId) socket.emit('subscribe', currentSessionId)
 })
 socket.on('disconnect', () => {
-  connectionStatus.textContent = 'disconnected'
-  connectionStatus.className = 'badge badge-sm badge-error text-[10px]'
+  setConnectionState('disconnected')
 })
 
 // --- Sessions ---
@@ -335,6 +358,10 @@ function renderSessionList() {
     const userName = user?.githubUsername || user?.name || user?.osUser || ''
     const title = userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
 
+    // Git repo info
+    const git = s.metadata?.git
+    const gitLabel = git ? [git.repoName || git.workDir, git.branch].filter(Boolean).join(' / ') : ''
+
     // Latest action preview
     const lastText = s.lastEventText ? esc(truncate(s.lastEventText, 40)) : ''
     const lastLabel = formatSessionLastEvent(s.lastEventType)
@@ -348,6 +375,7 @@ function renderSessionList() {
       <div class="flex-1 min-w-0">
         <div class="text-xs truncate font-medium">${lastText ? lastText : lastLabel}</div>
         <div class="text-[10px] opacity-50 truncate">${esc(title)}${lastText ? ' · ' + lastLabel : ''}</div>
+        ${gitLabel ? `<div class="text-[10px] opacity-40 truncate">${esc(gitLabel)}</div>` : ''}
         <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
       </div>
       <div class="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
@@ -1043,6 +1071,9 @@ function updateBubbleContent(el, session) {
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
   const title = userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
+  const git = session.metadata?.git
+  const gitLabel = git ? [git.repoName || git.workDir, git.branch].filter(Boolean).join(' / ') : ''
+
   const waiting = isBubbleWaiting(session)
   const spinner = !waiting ? '<span class="css-spinner ml-1"></span>' : ''
 
@@ -1066,6 +1097,7 @@ function updateBubbleContent(el, session) {
       <button class="archive-btn btn btn-xs btn-ghost px-1" data-bubble-archive="${session.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>
     </div>
     ${secondaryLine}
+    ${gitLabel ? `<div class="text-[10px] opacity-40 truncate">${esc(gitLabel)}</div>` : ''}
     <div class="flex items-center justify-between mt-1.5">
       <span class="text-[10px] opacity-30">${durStr}</span>
       <span class="badge badge-xs badge-ghost text-[9px]">${session.eventCount} events</span>
@@ -1206,3 +1238,11 @@ async function loadInvites() {
 
 // Init Lucide icons
 lucide.createIcons()
+
+// Show overlay after delay if not connected yet
+setTimeout(() => {
+  if (!socket.connected) setConnectionState('connecting')
+}, 500)
+
+// Sync connection state on load (in case connect fired before handler was registered)
+if (socket.connected) setConnectionState('connected')

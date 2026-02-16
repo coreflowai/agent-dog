@@ -35,9 +35,18 @@ export type UserInfo = {
   githubId?: number
 }
 
+export type GitInfo = {
+  commit?: string
+  branch?: string
+  remote?: string
+  repoName?: string
+  workDir?: string
+}
+
 export type IngestPayload = {
   source: 'claude-code' | 'codex' | 'opencode'
   sessionId: string
   event: Record<string, unknown>
   user?: UserInfo
+  git?: GitInfo
 }

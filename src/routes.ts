@@ -70,6 +70,11 @@ export function createRouter(io: SocketIOServer) {
           if (userId) updateSessionUserId(event.sessionId, userId)
         }
 
+        // Persist git info into session metadata
+        if (payload.git && Object.keys(payload.git).length > 0) {
+          updateSessionMeta(event.sessionId, { git: payload.git })
+        }
+
         // Broadcast to Socket.IO subscribers
         io.to(`session:${event.sessionId}`).emit('event', event)
         io.emit('session:update', getSession(event.sessionId))
@@ -198,11 +203,33 @@ USER_OBJ=$(jq -n \\
    (if $ghUser != "" then {githubUsername: $ghUser}   else {} end) +
    (if $ghId   != "" then {githubId: ($ghId | tonumber)} else {} end)')
 
+# Gather git repo info
+GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || true)
+GIT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+GIT_REMOTE=$(git remote get-url origin 2>/dev/null || true)
+GIT_TOPLEVEL=$(git rev-parse --show-toplevel 2>/dev/null || true)
+GIT_WORKDIR=""
+[ -n "$GIT_TOPLEVEL" ] && GIT_WORKDIR=$(basename "$GIT_TOPLEVEL")
+GIT_REPO_NAME=""
+[ -n "$GIT_REMOTE" ] && GIT_REPO_NAME=$(echo "$GIT_REMOTE" | sed -E 's#^.+[:/]([^/]+/[^/]+?)(\\.git)?$#\\1#')
+[ -n "$GIT_REMOTE" ] && GIT_REMOTE=$(echo "$GIT_REMOTE" | sed -E 's#https://[^@]+@#https://#')
+
+GIT_OBJ=$(jq -n \\
+  --arg commit "$GIT_COMMIT" --arg branch "$GIT_BRANCH" \\
+  --arg remote "$GIT_REMOTE" --arg repoName "$GIT_REPO_NAME" \\
+  --arg workDir "$GIT_WORKDIR" \\
+  '{} +
+   (if $commit   != "" then {commit: $commit}     else {} end) +
+   (if $branch   != "" then {branch: $branch}     else {} end) +
+   (if $remote   != "" then {remote: $remote}     else {} end) +
+   (if $repoName != "" then {repoName: $repoName} else {} end) +
+   (if $workDir  != "" then {workDir: $workDir}   else {} end)')
+
 curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \\
   -H "Content-Type: application/json" \\
   \${AGENT_FLOW_API_KEY:+-H "x-api-key: $AGENT_FLOW_API_KEY"} \\
-  -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$INPUT" --argjson u "$USER_OBJ" \\
-    '{source:"claude-code",sessionId:$s,event:$e,user:$u}')"
+  -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$INPUT" --argjson u "$USER_OBJ" --argjson g "$GIT_OBJ" \\
+    '{source:"claude-code",sessionId:$s,event:$e,user:$u,git:$g}')"
 `
       return new Response(script, {
         headers: { 'Content-Type': 'text/plain', 'Content-Disposition': 'attachment; filename="agent-flow-hook.sh"' },
@@ -241,7 +268,35 @@ function getUser() {
   }
 }
 
+function getGitInfo() {
+  try {
+    const { execSync } = require("child_process");
+    const run = (cmd: string) => { try { return execSync(cmd, { encoding: "utf-8" }).trim(); } catch { return ""; } };
+    const commit = run("git rev-parse --short HEAD");
+    const branch = run("git symbolic-ref --short HEAD");
+    let remote = run("git remote get-url origin");
+    const topLevel = run("git rev-parse --show-toplevel");
+    const workDir = topLevel ? require("path").basename(topLevel) : "";
+    let repoName = "";
+    if (remote) {
+      const m = remote.match(/[:/]([^/]+\\/[^/]+?)(?:\\.git)?$/);
+      if (m) repoName = m[1];
+      remote = remote.replace(/https:\\/\\/[^@]+@/, "https://");
+    }
+    const git: Record<string, string> = {};
+    if (commit) git.commit = commit;
+    if (branch) git.branch = branch;
+    if (remote) git.remote = remote;
+    if (repoName) git.repoName = repoName;
+    if (workDir) git.workDir = workDir;
+    return Object.keys(git).length > 0 ? git : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const user = getUser();
+const gitInfo = getGitInfo();
 const messageRoles = new Map<string, string>();
 const finalizedParts = new Set<string>();
 
@@ -251,7 +306,7 @@ function post(sessionId: string, event: Record<string, unknown>) {
   fetch(AGENT_FLOW_URL + "/api/ingest", {
     method: "POST",
     headers,
-    body: JSON.stringify({ source: "opencode", sessionId, event, ...(user ? { user } : {}) }),
+    body: JSON.stringify({ source: "opencode", sessionId, event, ...(user ? { user } : {}), ...(gitInfo ? { git: gitInfo } : {}) }),
   }).catch(() => {});
 }
 

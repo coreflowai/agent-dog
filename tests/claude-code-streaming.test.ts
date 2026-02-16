@@ -152,4 +152,54 @@ describe('Claude Code Streaming', () => {
     const data = await res.json() as any
     expect(data.status).toBe('active')
   })
+
+  test('git info is persisted in session metadata', async () => {
+    const gitSessionId = 'cc-git-test-' + Date.now()
+    const gitInfo = {
+      commit: 'a1ac4c7',
+      branch: 'main',
+      remote: 'git@github.com:user/repo.git',
+      repoName: 'user/repo',
+      workDir: 'repo',
+    }
+
+    await fetch(`${srv.url}/api/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'claude-code',
+        sessionId: gitSessionId,
+        event: { hook_event_name: 'SessionStart', session_id: gitSessionId },
+        git: gitInfo,
+      }),
+    })
+
+    const res = await fetch(`${srv.url}/api/sessions/${gitSessionId}`)
+    const data = await res.json() as any
+    expect(data.metadata.git).toBeDefined()
+    expect(data.metadata.git.commit).toBe('a1ac4c7')
+    expect(data.metadata.git.branch).toBe('main')
+    expect(data.metadata.git.repoName).toBe('user/repo')
+    expect(data.metadata.git.workDir).toBe('repo')
+    expect(data.metadata.git.remote).toBe('git@github.com:user/repo.git')
+  })
+
+  test('empty git object is not persisted', async () => {
+    const emptyGitSessionId = 'cc-empty-git-' + Date.now()
+
+    await fetch(`${srv.url}/api/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        source: 'claude-code',
+        sessionId: emptyGitSessionId,
+        event: { hook_event_name: 'SessionStart', session_id: emptyGitSessionId },
+        git: {},
+      }),
+    })
+
+    const res = await fetch(`${srv.url}/api/sessions/${emptyGitSessionId}`)
+    const data = await res.json() as any
+    expect(data.metadata.git).toBeUndefined()
+  })
 })

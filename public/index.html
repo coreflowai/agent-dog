@@ -66,6 +66,7 @@
 
     /* Mobile responsive */
     @media (max-width: 767px) {
+      /* Layout */
       #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
       #sidebar-handle { display: none !important; }
       #sidebar.mobile-hidden { display: none !important; }
@@ -73,7 +74,29 @@
       #mobile-back { display: flex !important; }
       .resize-handle-y { display: none !important; }
       #detail-panel { max-height: 50vh !important; }
-      .agent-bubble { width: 170px; padding: 10px; }
+
+      /* Navbar: compact for mobile */
+      .navbar { padding-left: 12px; padding-right: 12px; }
+      .navbar .badge-ghost { display: none; }
+
+      /* Bubbles: full-width stacked */
+      .agent-bubble { width: 100% !important; padding: 12px; }
+      #cooking-container, #waiting-container { flex-direction: column; }
+      #bubble-scroll { padding: 12px; }
+
+      /* Session list: larger tap targets */
+      .session-item { padding: 12px; }
+
+      /* Back button: more prominent */
+      #mobile-back { padding: 10px 12px; }
+      #mobile-back span { font-size: 13px; }
+
+      /* Event panel text sizes */
+      .event-row td { padding-top: 8px; padding-bottom: 8px; }
+
+      /* Help dialog tabs: horizontal scroll */
+      #setup-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
+      #setup-tabs button { flex-shrink: 0; }
     }
   </style>
 </head>
@@ -81,23 +104,38 @@
 
   <!-- Navbar -->
   <div class="navbar bg-base-300 shadow-sm px-4 min-h-10 h-10">
-    <div class="flex-1">
+    <div class="flex-1 min-w-0">
       <span id="btn-title" class="text-sm font-bold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Back to overview (v)">AgentFlow</span>
       <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
     </div>
-    <div class="flex-none gap-2">
-      <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
+    <div class="flex-none gap-1 sm:gap-2">
+      <span id="connection-status" class="badge badge-sm badge-outline text-[10px] hidden sm:inline-flex">connecting...</span>
+      <span id="connection-dot" class="sm:hidden w-2 h-2 rounded-full bg-base-300"></span>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
-      <button id="btn-invite" class="btn btn-xs btn-ghost" title="Invite user">invite</button>
-      <button id="btn-signout" class="btn btn-xs btn-ghost text-error" title="Sign out">sign out</button>
+      <button id="btn-invite" class="btn btn-xs btn-ghost" title="Invite user">
+        <i data-lucide="user-plus" class="w-3.5 h-3.5 sm:hidden"></i>
+        <span class="hidden sm:inline">invite</span>
+      </button>
+      <button id="btn-signout" class="btn btn-xs btn-ghost text-error" title="Sign out">
+        <i data-lucide="log-out" class="w-3.5 h-3.5 sm:hidden"></i>
+        <span class="hidden sm:inline">sign out</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Connection overlay (hidden by default, shown after delay if not connected) -->
+  <div id="connection-overlay" class="fixed inset-0 z-50 bg-base-100/80 backdrop-blur-sm flex items-center justify-center hidden">
+    <div class="text-center">
+      <span class="css-spinner w-5 h-5 border-2"></span>
+      <p id="connection-overlay-text" class="text-xs opacity-50 mt-3">Connecting...</p>
     </div>
   </div>
 
   <!-- Bubble View (default) -->
   <div id="bubble-view" class="h-[calc(100vh-2.5rem)] flex flex-col">
-    <div class="px-4 py-2 border-b border-base-300 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
-        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Active Sessions</span>
+    <div class="px-3 sm:px-4 py-2 border-b border-base-300 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="font-semibold text-[10px] sm:text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Active Sessions</span>
         <span id="bubble-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
       </div>
       <select id="bubble-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
@@ -139,8 +177,8 @@
     <!-- Session List (Left Panel) -->
     <div id="sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:256px;min-width:120px;max-width:50vw;">
       <div class="px-3 py-2 border-b border-base-300 flex items-center justify-between gap-2">
-        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Sessions</span>
-        <select id="user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
+        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Sessions</span>
+        <select id="user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px] flex-shrink min-w-0">
           <option value="">All users</option>
         </select>
       </div>
@@ -153,9 +191,9 @@
     <!-- Event Timeline (Right Panel) -->
     <div id="main-panel" class="flex-1 flex flex-col overflow-hidden">
       <!-- Mobile back button (hidden on desktop) -->
-      <div id="mobile-back" class="hidden items-center gap-2 px-3 py-2 border-b border-base-300 bg-base-100 cursor-pointer" onclick="mobileBack()">
-        <span class="text-xs opacity-60">&larr;</span>
-        <span class="text-xs opacity-60">Sessions</span>
+      <div id="mobile-back" class="hidden items-center gap-2 px-3 py-2.5 border-b border-base-300 bg-base-100 cursor-pointer active:bg-base-200 transition-colors" onclick="mobileBack()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="opacity-50"><path d="M15 18l-6-6 6-6"/></svg>
+        <span class="text-xs font-medium opacity-60">Sessions</span>
       </div>
       <!-- Session toolbar (visible when a session is selected) -->
       <div id="session-toolbar" class="hidden items-center justify-end gap-1 px-3 py-1.5 border-b border-base-200 bg-base-100">
@@ -193,7 +231,7 @@
 
   <!-- Invite Dialog -->
   <dialog id="invite-dialog" class="modal">
-    <div class="modal-box max-w-md p-0 flex flex-col max-h-[80vh]">
+    <div class="modal-box max-w-md p-0 flex flex-col max-h-[90vh] sm:max-h-[80vh] w-[calc(100%-1rem)] sm:w-auto">
       <div class="sticky top-0 bg-base-100 z-10 px-6 pt-5 pb-3 border-b border-base-300">
         <form method="dialog">
           <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -234,7 +272,7 @@
 
   <!-- Help Dialog -->
   <dialog id="help-dialog" class="modal">
-    <div class="modal-box max-w-2xl max-h-[80vh] p-0 flex flex-col">
+    <div class="modal-box max-w-2xl max-h-[90vh] sm:max-h-[80vh] p-0 flex flex-col w-[calc(100%-1rem)] sm:w-auto">
       <div class="sticky top-0 bg-base-100 z-10 px-6 pt-5 pb-3 border-b border-base-300">
         <form method="dialog">
           <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -315,7 +353,7 @@
         </div>
       </div>
 
-      <div class="sticky bottom-0 bg-base-100 border-t border-base-300 px-6 py-3">
+      <div class="sticky bottom-0 bg-base-100 border-t border-base-300 px-6 py-3 hidden sm:block">
         <div class="opacity-40 text-[10px] flex items-center gap-2">
           <i data-lucide="keyboard" class="w-3 h-3"></i>
           <p><b>Keyboard:</b> v toggle view, j/k navigate, Enter/l to view events, Escape/h back, ? help</p>

@@ -10,7 +10,7 @@
  *   const result = await query({ prompt: "...", options: { hooks } })
  */
 
-import type { UserInfo } from '../src/types'
+import type { UserInfo, GitInfo } from '../src/types'
 
 type HookEvent = {
   hook_event_name: string
@@ -18,7 +18,7 @@ type HookEvent = {
   [key: string]: unknown
 }
 
-async function postEvent(url: string, sessionId: string, event: Record<string, unknown>, user?: UserInfo, apiKey?: string) {
+async function postEvent(url: string, sessionId: string, event: Record<string, unknown>, user?: UserInfo, git?: GitInfo, apiKey?: string) {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (apiKey) headers['x-api-key'] = apiKey
@@ -30,6 +30,7 @@ async function postEvent(url: string, sessionId: string, event: Record<string, u
         sessionId,
         event,
         ...(user && Object.keys(user).length > 0 ? { user } : {}),
+        ...(git && Object.keys(git).length > 0 ? { git } : {}),
       }),
     })
   } catch {
@@ -37,41 +38,41 @@ async function postEvent(url: string, sessionId: string, event: Record<string, u
   }
 }
 
-export function createAgentFlowHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo, apiKey?: string) {
+export function createAgentFlowHooks(agentDogUrl = 'http://localhost:3333', user?: UserInfo, git?: GitInfo, apiKey?: string) {
   return {
     onSessionStart: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'SessionStart',
-      }, user, apiKey)
+      }, user, git, apiKey)
     },
 
     onUserPromptSubmit: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'UserPromptSubmit',
-      }, user, apiKey)
+      }, user, git, apiKey)
     },
 
     onPreToolUse: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'PreToolUse',
-      }, user, apiKey)
+      }, user, git, apiKey)
     },
 
     onPostToolUse: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'PostToolUse',
-      }, user, apiKey)
+      }, user, git, apiKey)
     },
 
     onStop: async (event: HookEvent) => {
       await postEvent(agentDogUrl, event.session_id, {
         ...event,
         hook_event_name: 'Stop',
-      }, user, apiKey)
+      }, user, git, apiKey)
     },
   }
 }

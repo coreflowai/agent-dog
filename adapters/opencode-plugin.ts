@@ -32,7 +32,35 @@ function getUser() {
   }
 }
 
+function getGitInfo() {
+  try {
+    const { execSync } = require("child_process");
+    const run = (cmd: string) => { try { return execSync(cmd, { encoding: "utf-8" }).trim(); } catch { return ""; } };
+    const commit = run("git rev-parse --short HEAD");
+    const branch = run("git symbolic-ref --short HEAD");
+    let remote = run("git remote get-url origin");
+    const topLevel = run("git rev-parse --show-toplevel");
+    const workDir = topLevel ? require("path").basename(topLevel) : "";
+    let repoName = "";
+    if (remote) {
+      const m = remote.match(/[:/]([^/]+\/[^/]+?)(?:\.git)?$/);
+      if (m) repoName = m[1];
+      remote = remote.replace(/https:\/\/[^@]+@/, "https://");
+    }
+    const git: Record<string, string> = {};
+    if (commit) git.commit = commit;
+    if (branch) git.branch = branch;
+    if (remote) git.remote = remote;
+    if (repoName) git.repoName = repoName;
+    if (workDir) git.workDir = workDir;
+    return Object.keys(git).length > 0 ? git : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 const user = getUser();
+const gitInfo = getGitInfo();
 const messageRoles = new Map<string, string>();
 // Track which parts have already been forwarded in final form
 const finalizedParts = new Set<string>();
@@ -56,6 +84,7 @@ function post(sessionId: string, event: Record<string, unknown>) {
       sessionId,
       event,
       ...(user ? { user } : {}),
+      ...(gitInfo ? { git: gitInfo } : {}),
     }),
   }).catch(() => {});
 }
