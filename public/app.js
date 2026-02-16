@@ -1063,5 +1063,96 @@ setInterval(() => {
   }
 }, 10000)
 
+// --- Invite dialog ---
+const inviteDialog = document.getElementById('invite-dialog')
+const btnInvite = document.getElementById('btn-invite')
+const inviteEmail = document.getElementById('invite-email')
+const inviteCreateBtn = document.getElementById('invite-create-btn')
+const inviteLinkBox = document.getElementById('invite-link-box')
+const inviteLinkInput = document.getElementById('invite-link-input')
+const inviteCopyBtn = document.getElementById('invite-copy-btn')
+const inviteList = document.getElementById('invite-list')
+
+btnInvite.addEventListener('click', () => {
+  inviteDialog.showModal()
+  lucide.createIcons()
+  inviteLinkBox.classList.add('hidden')
+  inviteEmail.value = ''
+  loadInvites()
+})
+
+inviteCreateBtn.addEventListener('click', async () => {
+  inviteCreateBtn.disabled = true
+  inviteCreateBtn.textContent = '...'
+  try {
+    const res = await fetch('/api/invites', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: inviteEmail.value.trim() || undefined }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      inviteLinkInput.value = data.invite.url
+      inviteLinkBox.classList.remove('hidden')
+      inviteEmail.value = ''
+      loadInvites()
+    }
+  } catch {}
+  inviteCreateBtn.disabled = false
+  inviteCreateBtn.textContent = 'Create'
+})
+
+inviteCopyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(inviteLinkInput.value).then(() => {
+    inviteCopyBtn.textContent = 'copied!'
+    setTimeout(() => { inviteCopyBtn.textContent = 'copy' }, 1500)
+  })
+})
+
+async function loadInvites() {
+  try {
+    const res = await fetch('/api/invites', { credentials: 'include' })
+    const data = await res.json()
+    if (!Array.isArray(data) || data.length === 0) {
+      inviteList.innerHTML = '<div class="opacity-40">No invites yet</div>'
+      return
+    }
+    inviteList.innerHTML = data.map(inv => {
+      const now = Date.now()
+      let status, statusClass
+      if (inv.usedAt) {
+        status = 'used'
+        statusClass = 'badge-success'
+      } else if (now > inv.expiresAt) {
+        status = 'expired'
+        statusClass = 'badge-ghost'
+      } else {
+        status = 'pending'
+        statusClass = 'badge-warning'
+      }
+      const email = inv.email ? esc(inv.email) : '<span class="opacity-40">any</span>'
+      const time = timeAgo(inv.createdAt)
+      return `<div class="flex items-center gap-2 py-1.5 border-b border-base-200">
+        <div class="flex-1 min-w-0">
+          <span>${email}</span>
+          <span class="opacity-30 ml-1">${time}</span>
+        </div>
+        <span class="badge badge-xs ${statusClass} text-[9px]">${status}</span>
+        ${!inv.usedAt ? `<button class="btn btn-xs btn-ghost text-error opacity-60 invite-revoke-btn" data-id="${inv.id}">revoke</button>` : ''}
+      </div>`
+    }).join('')
+
+    inviteList.querySelectorAll('.invite-revoke-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await fetch(`/api/invites/${btn.dataset.id}`, { method: 'DELETE', credentials: 'include' })
+        loadInvites()
+      })
+    })
+  } catch {
+    inviteList.innerHTML = '<div class="text-error text-xs">Failed to load invites</div>'
+  }
+}
+
 // Init Lucide icons
 lucide.createIcons()

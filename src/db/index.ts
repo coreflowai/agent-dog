@@ -2,7 +2,7 @@ import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { migrate } from 'drizzle-orm/bun-sqlite/migrator'
 import { eq, desc, sql } from 'drizzle-orm'
-import { sessions, events } from './schema'
+import { sessions, events, invites } from './schema'
 import type { AgentFlowEvent, Session, UserInfo } from '../types'
 
 const DB_PATH = process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
@@ -243,4 +243,47 @@ export function clearAll() {
   const db = getDb()
   db.delete(events).run()
   db.delete(sessions).run()
+}
+
+// --- Invites ---
+
+const INVITE_EXPIRY = 7 * 24 * 60 * 60 * 1000 // 7 days
+
+export function createInvite(createdBy: string, email?: string): { id: string; token: string } {
+  const db = getDb()
+  const id = crypto.randomUUID()
+  const token = crypto.randomUUID().replace(/-/g, '')
+  const now = Date.now()
+  db.insert(invites).values({
+    id,
+    token,
+    email: email || null,
+    createdBy,
+    createdAt: now,
+    expiresAt: now + INVITE_EXPIRY,
+  }).run()
+  return { id, token }
+}
+
+export function getInviteByToken(token: string) {
+  const db = getDb()
+  return db.select().from(invites).where(eq(invites.token, token)).get() ?? null
+}
+
+export function listInvites() {
+  const db = getDb()
+  return db.select().from(invites).orderBy(desc(invites.createdAt)).all()
+}
+
+export function markInviteUsed(id: string, usedBy: string) {
+  const db = getDb()
+  db.update(invites)
+    .set({ usedAt: Date.now(), usedBy })
+    .where(eq(invites.id, id))
+    .run()
+}
+
+export function deleteInvite(id: string) {
+  const db = getDb()
+  db.delete(invites).where(eq(invites.id, id)).run()
 }

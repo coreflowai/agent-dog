@@ -19,7 +19,7 @@ type ServerOptions = {
 }
 
 // Files accessible without authentication
-const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js'])
+const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js', '/invite.html', '/invite-client.js'])
 
 export function createServer(options: ServerOptions = {}) {
   const { port = 3333, dbPath, serveStatic = true, authEnabled = true } = options
@@ -121,26 +121,32 @@ export function createServer(options: ServerOptions = {}) {
         return auth.handler(req)
       }
 
-      // API routes — require auth
+      // API routes — require auth (with exceptions for public invite endpoints)
       if (url.pathname.startsWith('/api/')) {
-        if (auth) {
-          const { authenticated } = await authenticateRequest(req, auth)
-          if (!authenticated) {
+        const isPublicInviteRoute =
+          (req.method === 'GET' && url.pathname === '/api/invites/check') ||
+          (req.method === 'POST' && url.pathname === '/api/invites/redeem')
+
+        let userId: string | undefined
+        if (auth && !isPublicInviteRoute) {
+          const result = await authenticateRequest(req, auth)
+          if (!result.authenticated) {
             return new Response(JSON.stringify({ error: 'Unauthorized' }), {
               status: 401,
               headers: { 'Content-Type': 'application/json' },
             })
           }
+          userId = result.userId
         }
-        const apiResponse = await router(req)
+        const apiResponse = await router(req, userId)
         if (apiResponse) return apiResponse
       }
 
       // Setup route (non-API, no /api/ prefix) — require auth
       if (url.pathname === '/setup/hook.sh' || url.pathname === '/setup/opencode-plugin.ts') {
         if (auth) {
-          const { authenticated } = await authenticateRequest(req, auth)
-          if (!authenticated) {
+          const result = await authenticateRequest(req, auth)
+          if (!result.authenticated) {
             return new Response('Unauthorized', { status: 401 })
           }
         }

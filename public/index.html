@@ -83,6 +83,7 @@
     <div class="flex-none gap-2">
       <span id="connection-status" class="badge badge-sm badge-outline text-[10px]">connecting...</span>
       <button id="btn-help" class="btn btn-xs btn-ghost" title="Setup guide (?)">?</button>
+      <button id="btn-invite" class="btn btn-xs btn-ghost" title="Invite user">invite</button>
       <button id="btn-signout" class="btn btn-xs btn-ghost text-error" title="Sign out">sign out</button>
     </div>
   </div>
@@ -177,6 +178,47 @@
     </div>
 
   </div> <!-- /list-view -->
+
+  <!-- Invite Dialog -->
+  <dialog id="invite-dialog" class="modal">
+    <div class="modal-box max-w-md p-0 flex flex-col max-h-[80vh]">
+      <div class="sticky top-0 bg-base-100 z-10 px-6 pt-5 pb-3 border-b border-base-300">
+        <form method="dialog">
+          <button class="btn btn-sm btn-circle btn-ghost absolute right-3 top-3"><i data-lucide="x" class="w-4 h-4"></i></button>
+        </form>
+        <h3 class="text-base font-bold">Invite User</h3>
+      </div>
+
+      <div class="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+        <!-- Create invite form -->
+        <div>
+          <label class="label text-xs py-0.5">Email (optional)</label>
+          <div class="flex gap-2">
+            <input type="email" id="invite-email" class="input input-sm input-bordered flex-1 text-xs" placeholder="user@example.com" />
+            <button id="invite-create-btn" class="btn btn-sm btn-primary text-xs">Create</button>
+          </div>
+        </div>
+
+        <!-- Generated link display (hidden initially) -->
+        <div id="invite-link-box" class="hidden">
+          <label class="label text-xs py-0.5 font-semibold">Invite Link</label>
+          <div class="flex gap-2">
+            <input type="text" id="invite-link-input" class="input input-sm input-bordered flex-1 text-xs" readonly />
+            <button id="invite-copy-btn" class="btn btn-sm btn-ghost text-xs">copy</button>
+          </div>
+        </div>
+
+        <!-- Invite list -->
+        <div>
+          <label class="label text-xs py-0.5 font-semibold">Invites</label>
+          <div id="invite-list" class="space-y-1 text-xs">
+            <div class="opacity-40">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
 
   <!-- Help Dialog -->
   <dialog id="help-dialog" class="modal">

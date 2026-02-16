@@ -3,7 +3,8 @@ import { homedir } from 'os'
 import { resolve } from 'path'
 import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
-import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId } from './db'
+import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
+import { createAuth, migrateAuth } from './auth'
 import type { IngestPayload } from './types'
 
 function expandPath(p: string): string {
@@ -41,7 +42,7 @@ function json(data: unknown, status = 200) {
 }
 
 export function createRouter(io: SocketIOServer) {
-  return async function handleRequest(req: Request): Promise<Response | null> {
+  return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
 
@@ -264,6 +265,74 @@ export default {
           'Content-Disposition': 'attachment; filename="agent-flow.ts"',
         },
       })
+    }
+
+    // POST /api/invites — create invite (auth required, userId passed in)
+    if (req.method === 'POST' && pathname === '/api/invites') {
+      if (!userId) return json({ error: 'Unauthorized' }, 401)
+      try {
+        const body = await req.json() as { email?: string }
+        const { id, token } = createInvite(userId, body.email)
+        const proto = req.headers.get('x-forwarded-proto') || 'http'
+        const origin = req.headers.get('host') ? `${proto}://${req.headers.get('host')}` : 'http://localhost:3333'
+        return json({ ok: true, invite: { id, token, url: `${origin}/invite.html?token=${token}` } })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create invite' }, 500)
+      }
+    }
+
+    // GET /api/invites — list all invites (auth required)
+    if (req.method === 'GET' && pathname === '/api/invites') {
+      if (!userId) return json({ error: 'Unauthorized' }, 401)
+      return json(listInvites())
+    }
+
+    // DELETE /api/invites/:id — revoke invite (auth required)
+    if (req.method === 'DELETE' && pathname.startsWith('/api/invites/')) {
+      if (!userId) return json({ error: 'Unauthorized' }, 401)
+      const id = pathname.replace('/api/invites/', '')
+      deleteInvite(id)
+      return json({ ok: true })
+    }
+
+    // GET /api/invites/check?token= — validate invite token (public)
+    if (req.method === 'GET' && pathname === '/api/invites/check') {
+      const token = url.searchParams.get('token')
+      if (!token) return json({ error: 'Missing token' }, 400)
+      const invite = getInviteByToken(token)
+      if (!invite) return json({ valid: false, reason: 'Invalid invite link' })
+      if (invite.usedAt) return json({ valid: false, reason: 'This invite has already been used' })
+      if (Date.now() > invite.expiresAt) return json({ valid: false, reason: 'This invite has expired' })
+      return json({ valid: true, email: invite.email || null })
+    }
+
+    // POST /api/invites/redeem — redeem invite + create account (public)
+    if (req.method === 'POST' && pathname === '/api/invites/redeem') {
+      try {
+        const body = await req.json() as { token: string; email: string; password: string; name?: string }
+        if (!body.token || !body.email || !body.password) {
+          return json({ error: 'Missing required fields: token, email, password' }, 400)
+        }
+        const invite = getInviteByToken(body.token)
+        if (!invite) return json({ error: 'Invalid invite link' }, 400)
+        if (invite.usedAt) return json({ error: 'This invite has already been used' }, 400)
+        if (Date.now() > invite.expiresAt) return json({ error: 'This invite has expired' }, 400)
+
+        // Create user with sign-up enabled
+        const auth = createAuth({ disableSignUp: false })
+        const result = await auth.api.signUpEmail({
+          body: {
+            email: body.email,
+            password: body.password,
+            name: body.name || body.email.split('@')[0],
+          },
+        })
+
+        markInviteUsed(invite.id, result.user.id)
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create account' }, 500)
+      }
     }
 
     return null // Not handled

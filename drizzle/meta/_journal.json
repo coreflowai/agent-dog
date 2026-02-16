@@ -15,6 +15,13 @@
       "when": 1771156673069,
       "tag": "0001_rapid_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771206674419,
+      "tag": "0002_crazy_harpoon",
+      "breakpoints": true
     }
   ]
 }

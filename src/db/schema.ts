@@ -27,3 +27,14 @@ export const events = sqliteTable('events', {
 }, (table) => [
   index('idx_events_session').on(table.sessionId, table.timestamp),
 ])
+
+export const invites = sqliteTable('invites', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull().unique(),
+  email: text('email'),
+  createdBy: text('created_by').notNull(),
+  createdAt: integer('created_at').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  usedAt: integer('used_at'),
+  usedBy: text('used_by'),
+})
