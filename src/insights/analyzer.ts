@@ -198,12 +198,8 @@ ORDER BY timestamp DESC;
 /**
  * Build the analysis prompt
  */
-function buildAnalysisPrompt(userId: string, repoName: string | null, sinceTimestamp: number): string {
-  const repoContext = repoName
-    ? `for repository "${repoName}"`
-    : 'across all repositories'
-
-  return `You are analyzing AI agent session data for user "${userId}" ${repoContext} to generate actionable insights.
+function buildAnalysisPrompt(userId: string, _repoName: string | null, sinceTimestamp: number): string {
+  return `You are analyzing AI agent session data for user "${userId}" across all their recent sessions to generate actionable insights.
 
 ## Your Task
 
@@ -213,14 +209,15 @@ First, use the \`schema\` tool to understand the database structure, then perfor
 
 ## Analysis Steps
 
-1. **Gather Data**: Query recent sessions and events for this user${repoName ? ` in repo "${repoName}"` : ''}:
-   - Sessions: WHERE user_id = '${userId}'${repoName ? ` AND json_extract(metadata, '$.git.repoName') = '${repoName}'` : ''}
-   - Events: WHERE timestamp > ${sinceTimestamp}
+1. **Gather Data**: Query recent sessions and events for this user:
+   - Sessions: WHERE user_id = '${userId}'
+   - Events: Join with sessions and filter by timestamp > ${sinceTimestamp}
+   - Include data from ALL repositories the user has worked in
 
 2. **Analyze User Intent**: What was the user trying to accomplish?
    - Look at message.user events for their prompts/requests
    - Identify recurring themes and patterns
-   - Note the types of tasks they're working on
+   - Note the types of tasks they're working on across different projects
 
 3. **Identify Frustration Points**: Where did they struggle?
    - Look for error events (category = 'error')

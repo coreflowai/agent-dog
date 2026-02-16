@@ -2,11 +2,11 @@ import { Cron } from 'croner'
 import type { Server as SocketIOServer } from 'socket.io'
 import { runAnalysis } from './analyzer'
 import {
-  getUserRepoGroupsWithActivity,
+  getUsersWithActivity,
   getAnalysisState,
   updateAnalysisState,
   addInsight,
-  countEventsSince,
+  countUserEventsSince,
 } from '../db/insights'
 
 // Minimum events required to trigger analysis
@@ -39,7 +39,7 @@ export type InsightScheduler = {
 
 /**
  * Create and start the insight analysis scheduler.
- * Runs every 30 minutes by default, analyzing sessions per user+repo.
+ * Runs every 30 minutes by default, analyzing all sessions per user.
  */
 export function createInsightScheduler(options: InsightSchedulerOptions): InsightScheduler {
   const {
@@ -62,15 +62,15 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
     console.log('[InsightScheduler] Starting analysis run at', new Date().toISOString())
 
     try {
-      // Get all user+repo groups that have had activity
-      const groups = getUserRepoGroupsWithActivity(0)
-      console.log(`[InsightScheduler] Found ${groups.length} user+repo groups`)
+      // Get all users that have had activity
+      const users = getUsersWithActivity()
+      console.log(`[InsightScheduler] Found ${users.length} users with activity`)
 
-      for (const group of groups) {
+      for (const user of users) {
         try {
-          await analyzeGroup(group.userId, group.repoName, minEventsForAnalysis, dbPath, io)
+          await analyzeUser(user.userId, minEventsForAnalysis, dbPath, io)
         } catch (error) {
-          console.error(`[InsightScheduler] Error analyzing ${group.userId}/${group.repoName}:`, error)
+          console.error(`[InsightScheduler] Error analyzing ${user.userId}:`, error)
         }
       }
 
@@ -107,47 +107,45 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
 }
 
 /**
- * Analyze a single user+repo group.
+ * Analyze all recent sessions for a single user (across all repos).
  */
-async function analyzeGroup(
+async function analyzeUser(
   userId: string,
-  repoName: string | null,
   minEvents: number,
   dbPath: string,
   io: SocketIOServer
 ) {
-  const repoLabel = repoName ?? 'all-repos'
-  console.log(`[InsightScheduler] Analyzing ${userId}/${repoLabel}`)
+  console.log(`[InsightScheduler] Analyzing user: ${userId}`)
 
-  // Get the last analysis state
-  const state = getAnalysisState(userId, repoName)
+  // Get the last analysis state for this user (repoName = null means all repos)
+  const state = getAnalysisState(userId, null)
   const sinceTimestamp = state?.lastEventTimestamp ?? 0
 
-  // Count new events since last analysis
-  const newEventCount = countEventsSince(userId, repoName, sinceTimestamp)
+  // Count new events since last analysis (across all repos)
+  const newEventCount = countUserEventsSince(userId, sinceTimestamp)
 
   if (newEventCount < minEvents) {
-    console.log(`[InsightScheduler] Skipping ${userId}/${repoLabel}: only ${newEventCount} new events (need ${minEvents})`)
+    console.log(`[InsightScheduler] Skipping ${userId}: only ${newEventCount} new events (need ${minEvents})`)
     return
   }
 
-  console.log(`[InsightScheduler] Running analysis for ${userId}/${repoLabel} with ${newEventCount} new events`)
+  console.log(`[InsightScheduler] Running analysis for ${userId} with ${newEventCount} new events`)
 
-  // Run the analysis
+  // Run the analysis (repoName = null to analyze all repos)
   const analysisWindowStart = sinceTimestamp || Date.now() - DEFAULT_ANALYSIS_WINDOW_MS
   const analysisWindowEnd = Date.now()
 
-  const result = await runAnalysis(userId, repoName, sinceTimestamp, dbPath)
+  const result = await runAnalysis(userId, null, sinceTimestamp, dbPath)
 
   if (!result.success) {
-    console.error(`[InsightScheduler] Analysis failed for ${userId}/${repoLabel}:`, result.error)
+    console.error(`[InsightScheduler] Analysis failed for ${userId}:`, result.error)
     return
   }
 
-  // Save the insight
+  // Save the insight (repoName = null)
   const insight = addInsight({
     userId,
-    repoName,
+    repoName: null,
     content: result.content,
     categories: result.categories,
     followUpActions: result.followUpActions,
@@ -158,10 +156,10 @@ async function analyzeGroup(
     meta: result.meta,
   })
 
-  console.log(`[InsightScheduler] Created insight ${insight.id} for ${userId}/${repoLabel}`)
+  console.log(`[InsightScheduler] Created insight ${insight.id} for ${userId}`)
 
   // Update analysis state
-  updateAnalysisState(userId, repoName, analysisWindowEnd)
+  updateAnalysisState(userId, null, analysisWindowEnd)
 
   // Emit real-time update via Socket.IO
   io.emit('insight:new', insight)

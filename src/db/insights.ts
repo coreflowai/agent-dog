@@ -173,83 +173,49 @@ export function updateAnalysisState(
 
 // --- Helpers for analysis ---
 
-export type UserRepoGroup = {
+export type UserActivity = {
   userId: string
-  repoName: string | null
   sessionCount: number
   eventCount: number
   lastEventTime: number
 }
 
 /**
- * Get distinct (userId, repoName) pairs that have activity since a given timestamp.
- * This is used by the scheduler to determine which users/repos need analysis.
+ * Get all users that have sessions (for analysis scheduling).
  */
-export function getUserRepoGroupsWithActivity(sinceTimestamp: number = 0): UserRepoGroup[] {
+export function getUsersWithActivity(): UserActivity[] {
   const db = getDb()
 
-  // Get all sessions with activity since the timestamp, grouped by userId and repoName
+  // Get all sessions grouped by userId
   const rows = db.select({
     userId: sessions.userId,
-    metadata: sessions.metadata,
     lastEventTime: sessions.lastEventTime,
   })
     .from(sessions)
-    .where(gt(sessions.lastEventTime, sinceTimestamp))
+    .where(sql`${sessions.userId} IS NOT NULL`)
     .all()
 
-  // Group by userId + repoName (from metadata.git.repoName)
-  const groups = new Map<string, UserRepoGroup>()
+  // Group by userId
+  const users = new Map<string, UserActivity>()
 
   for (const row of rows) {
     if (!row.userId) continue
 
-    const metadata = row.metadata as Record<string, any> | null
-    const repoName = metadata?.git?.repoName ?? null
-    const key = `${row.userId}:${repoName || 'unknown'}`
-
-    const existing = groups.get(key)
+    const existing = users.get(row.userId)
     if (existing) {
       existing.sessionCount++
       existing.lastEventTime = Math.max(existing.lastEventTime, row.lastEventTime)
     } else {
-      groups.set(key, {
+      users.set(row.userId, {
         userId: row.userId,
-        repoName,
         sessionCount: 1,
-        eventCount: 0, // Will be filled below
+        eventCount: 0,
         lastEventTime: row.lastEventTime,
       })
     }
   }
 
-  // Get event counts for each group
-  for (const group of groups.values()) {
-    // Get sessions for this user+repo
-    const sessionRows = db.select({ id: sessions.id })
-      .from(sessions)
-      .where(
-        group.repoName
-          ? and(
-              eq(sessions.userId, group.userId),
-              sql`json_extract(${sessions.metadata}, '$.git.repoName') = ${group.repoName}`
-            )
-          : eq(sessions.userId, group.userId)
-      )
-      .all()
-
-    const sessionIds = sessionRows.map(r => r.id)
-    if (sessionIds.length > 0) {
-      const [countResult] = db
-        .select({ count: sql<number>`count(*)` })
-        .from(events)
-        .where(sql`${events.sessionId} IN (${sql.join(sessionIds.map(id => sql`${id}`), sql`, `)})`)
-        .all()
-      group.eventCount = countResult?.count ?? 0
-    }
-  }
-
-  return Array.from(groups.values())
+  return Array.from(users.values())
 }
 
 /**
@@ -266,28 +232,20 @@ export function getDistinctUserIds(): string[] {
 }
 
 /**
- * Count events for a user+repo combination since a given timestamp.
+ * Count events for a user (across all repos) since a given timestamp.
  */
-export function countEventsSince(
+export function countUserEventsSince(
   userId: string,
-  repoName: string | null | undefined,
   sinceTimestamp: number
 ): number {
   const db = getDb()
 
-  // Get session IDs for this user+repo
-  let sessionQuery = db.select({ id: sessions.id }).from(sessions)
+  // Get all session IDs for this user
+  const sessionRows = db.select({ id: sessions.id })
+    .from(sessions)
     .where(eq(sessions.userId, userId))
+    .all()
 
-  if (repoName) {
-    sessionQuery = db.select({ id: sessions.id }).from(sessions)
-      .where(and(
-        eq(sessions.userId, userId),
-        sql`json_extract(${sessions.metadata}, '$.git.repoName') = ${repoName}`
-      ))
-  }
-
-  const sessionRows = sessionQuery.all()
   const sessionIds = sessionRows.map(r => r.id)
 
   if (sessionIds.length === 0) return 0
