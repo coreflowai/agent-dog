@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { migrate } from 'drizzle-orm/bun-sqlite/migrator'
-import { eq, desc, sql } from 'drizzle-orm'
+import { eq, desc, sql, notInArray } from 'drizzle-orm'
 import { sessions, events, invites } from './schema'
 import type { AgentFlowEvent, Session, UserInfo } from '../types'
 
@@ -105,6 +105,12 @@ export function addEvent(event: AgentFlowEvent) {
 
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
+// Event types hidden from display (matches frontend HIDDEN_EVENT_TYPES)
+const HIDDEN_EVENT_TYPES = [
+  'session.updated', 'session.status', 'session.diff',
+  'message.updated', 'step.start', 'step.finish',
+]
+
 function deriveEventText(event: { type: string; text: string | null; toolName: string | null; error: string | null } | undefined): string | null {
   if (!event) return null
   if (event.toolName) return event.toolName
@@ -135,7 +141,7 @@ export function getSession(id: string): Session | null {
 
   const lastEvent = db.select({ type: events.type, text: events.text, toolName: events.toolName, error: events.error })
     .from(events)
-    .where(eq(events.sessionId, id))
+    .where(sql`${events.sessionId} = ${id} AND ${events.type} NOT IN (${sql.raw(HIDDEN_EVENT_TYPES.map(t => `'${t}'`).join(','))})`)
     .orderBy(desc(events.timestamp))
     .limit(1)
     .get()
@@ -193,7 +199,7 @@ export function listSessions(userId?: string): Session[] {
 
     const lastEvent = db.select({ type: events.type, text: events.text, toolName: events.toolName, error: events.error })
       .from(events)
-      .where(eq(events.sessionId, row.id))
+      .where(sql`${events.sessionId} = ${row.id} AND ${events.type} NOT IN (${sql.raw(HIDDEN_EVENT_TYPES.map(t => `'${t}'`).join(','))})`)
       .orderBy(desc(events.timestamp))
       .limit(1)
       .get()
