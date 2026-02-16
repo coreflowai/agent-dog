@@ -32,6 +32,9 @@ function getAuthConfig(options?: { baseURL?: string; disableSignUp?: boolean }) 
       apiKey({
         defaultPrefix: "agentflow_",
         enableMetadata: true,
+        rateLimit: {
+          enabled: false,
+        },
       }),
     ],
   } as const
