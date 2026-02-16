@@ -377,7 +377,7 @@ function renderSessionList() {
       const i = flatIdx++
       const isActive = s.id === currentSessionId
       const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
-      const isWaitingForUser = s.status === 'active' && (s.lastEventType === 'message.assistant' || s.lastEventType === 'session.start')
+      const isWaitingForUser = s.status === 'active' && isSessionWaiting(s)
       const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
         : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
         : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
@@ -1058,8 +1058,17 @@ function getActiveSessions() {
   return src.filter(s => s.status === 'active')
 }
 
-function isBubbleWaiting(session) {
-  return session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start'
+// Tools that block on user input or exit — not actually "cooking"
+const BLOCKING_TOOLS = new Set(['ExitPlanMode', 'AskUserQuestion', 'UserPromptSubmit'])
+const TOOL_STALE_MS = 2 * 60 * 1000 // 2 min
+
+function isSessionWaiting(session) {
+  if (session.lastEventType === 'message.assistant' || session.lastEventType === 'session.start') return true
+  if (session.lastEventType === 'tool.start') {
+    if (BLOCKING_TOOLS.has(session.lastEventText)) return true
+    if (Date.now() - session.lastEventTime > TOOL_STALE_MS) return true
+  }
+  return false
 }
 
 function renderBubbles() {
@@ -1132,8 +1141,8 @@ function renderBubbles() {
     const cookingSub = groupEl.querySelector('.bubble-subsection.cooking')
     const waitingSub = groupEl.querySelector('.bubble-subsection.waiting')
 
-    const cooking = repoSessions.filter(s => !isBubbleWaiting(s))
-    const waiting = repoSessions.filter(s => isBubbleWaiting(s))
+    const cooking = repoSessions.filter(s => !isSessionWaiting(s))
+    const waiting = repoSessions.filter(s => isSessionWaiting(s))
 
     cookingSub.classList.toggle('hidden', cooking.length === 0)
     waitingSub.classList.toggle('hidden', waiting.length === 0)
@@ -1142,9 +1151,9 @@ function renderBubbles() {
 
     // Place each session in the correct sub-container
     for (const s of repoSessions) {
-      const targetContainer = isBubbleWaiting(s) ? waitingContainer : cookingContainer
-      const otherContainer = isBubbleWaiting(s) ? cookingContainer : waitingContainer
-      const category = isBubbleWaiting(s) ? 'waiting' : 'cooking'
+      const targetContainer = isSessionWaiting(s) ? waitingContainer : cookingContainer
+      const otherContainer = isSessionWaiting(s) ? cookingContainer : waitingContainer
+      const category = isSessionWaiting(s) ? 'waiting' : 'cooking'
 
       // Find existing bubble anywhere in #bubble-scroll
       let el = bubbleScroll.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
@@ -1185,7 +1194,7 @@ function updateBubbleContent(el, session) {
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
   const title = session.metadata?.title || userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
 
-  const waiting = isBubbleWaiting(session)
+  const waiting = isSessionWaiting(session)
   const spinner = !waiting ? '<span class="css-spinner ml-1"></span>' : ''
 
   const lastLabel = formatSessionLastEvent(session.lastEventType)
