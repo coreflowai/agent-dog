@@ -1,4 +1,7 @@
 import { describe, test, expect, beforeAll } from 'bun:test'
+
+// Skip integration tests — they require a running dev server and real CLI tools
+const describeIntegration = process.env.INTEGRATION ? describe : describe.skip
 import path from 'path'
 
 const BASE_URL = process.env.AGENT_FLOW_URL ?? 'http://localhost:3333'
@@ -8,12 +11,12 @@ function sleep(ms: number) {
   return new Promise(r => setTimeout(r, ms))
 }
 
-// Clear stale data before running
-beforeAll(async () => {
-  await fetch(`${BASE_URL}/api/sessions`, { method: 'DELETE' })
-})
+describeIntegration('Integration - Real Claude Code session', () => {
+  // Clear stale data before running
+  beforeAll(async () => {
+    await fetch(`${BASE_URL}/api/sessions`, { method: 'DELETE' })
+  })
 
-describe('Integration - Real Claude Code session', () => {
   test('runs claude -p with hooks and streams events to AgentFlow', async () => {
     const settings = {
       hooks: {
@@ -75,7 +78,7 @@ describe('Integration - Real Claude Code session', () => {
   }, 120_000)
 })
 
-describe('Integration - Real Codex session', () => {
+describeIntegration('Integration - Real Codex session', () => {
   test('runs codex exec --json and pipes events to AgentFlow', async () => {
     const sessionId = `codex-integration-${Date.now()}`
 

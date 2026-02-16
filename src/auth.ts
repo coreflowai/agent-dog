@@ -12,7 +12,7 @@ function isEmailAllowed(email: string): boolean {
   return ALLOWED_DOMAINS.includes(domain!)
 }
 
-function getAuthConfig(options?: { baseURL?: string }) {
+function getAuthConfig(options?: { baseURL?: string; disableSignUp?: boolean }) {
   const sqlite = getSqlite()
   return {
     database: sqlite,
@@ -21,6 +21,7 @@ function getAuthConfig(options?: { baseURL?: string }) {
     secret: process.env.BETTER_AUTH_SECRET,
     emailAndPassword: {
       enabled: true,
+      disableSignUp: options?.disableSignUp ?? true, // sign-up disabled by default, use CLI to create users
       async onSignUp({ email }: { email: string }) {
         if (!isEmailAllowed(email)) {
           throw new Error("Email domain not allowed")
@@ -36,13 +37,13 @@ function getAuthConfig(options?: { baseURL?: string }) {
   } as const
 }
 
-export async function migrateAuth(options?: { baseURL?: string }) {
+export async function migrateAuth(options?: { baseURL?: string; disableSignUp?: boolean }) {
   const config = getAuthConfig(options)
   const { runMigrations } = await getMigrations(config)
   await runMigrations()
 }
 
-export function createAuth(options?: { baseURL?: string }) {
+export function createAuth(options?: { baseURL?: string; disableSignUp?: boolean }) {
   return betterAuth(getAuthConfig(options))
 }
 

@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { io as ioClient, type Socket } from 'socket.io-client'
 import { createServer } from '../src/server-factory'
-import { closeDb } from '../src/db'
+import { closeDb, initDb } from '../src/db'
+import { createAuth, migrateAuth } from '../src/auth'
 
 const TEST_EMAIL = 'test@example.com'
 const TEST_PASSWORD = 'testpassword123'
@@ -17,6 +18,12 @@ describe('Auth', () => {
     srv = createServer({ port: 0, dbPath, serveStatic: false, authEnabled: true })
     // Wait for auth migrations
     await new Promise(r => setTimeout(r, 2000))
+
+    // Seed test user via server-side API (bypasses disableSignUp)
+    const seedAuth = createAuth({ disableSignUp: false })
+    await seedAuth.api.signUpEmail({
+      body: { email: TEST_EMAIL, password: TEST_PASSWORD, name: TEST_NAME },
+    })
   })
 
   afterAll(() => {
@@ -33,17 +40,20 @@ describe('Auth', () => {
     expect(data.error).toBe('Unauthorized')
   })
 
-  test('sign-up creates a user and returns token', async () => {
+  test('health check is public', async () => {
+    const res = await fetch(`${srv.url}/health`)
+    expect(res.status).toBe(200)
+    const data = await res.json() as any
+    expect(data.status).toBe('ok')
+  })
+
+  test('public sign-up is disabled', async () => {
     const res = await fetch(`${srv.url}/api/auth/sign-up/email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD, name: TEST_NAME }),
+      body: JSON.stringify({ email: 'new@example.com', password: 'password123', name: 'New' }),
     })
-    expect(res.status).toBe(200)
-    const data = await res.json() as any
-    expect(data.user).toBeDefined()
-    expect(data.user.email).toBe(TEST_EMAIL)
-    expect(data.token).toBeTruthy()
+    expect(res.ok).toBe(false)
   })
 
   test('sign-in returns session cookie', async () => {
@@ -56,25 +66,18 @@ describe('Auth', () => {
     const data = await res.json() as any
     expect(data.user).toBeDefined()
     expect(data.token).toBeTruthy()
-    // Should have set-cookie header
     const setCookie = res.headers.get('set-cookie')
     expect(setCookie).toBeTruthy()
   })
 
   test('session-authenticated API access works', async () => {
-    // Sign in to get session cookie
     const signInRes = await fetch(`${srv.url}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
     })
-    const setCookie = signInRes.headers.get('set-cookie')
-    expect(setCookie).toBeTruthy()
-
-    // Extract cookies
     const cookies = extractCookies(signInRes)
 
-    // Use session cookie to access API
     const res = await fetch(`${srv.url}/api/sessions`, {
       headers: { cookie: cookies },
     })
@@ -84,7 +87,6 @@ describe('Auth', () => {
   })
 
   test('API key creation and ingest with key', async () => {
-    // Sign in
     const signInRes = await fetch(`${srv.url}/api/auth/sign-in/email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -92,7 +94,6 @@ describe('Auth', () => {
     })
     const cookies = extractCookies(signInRes)
 
-    // Create API key
     const createKeyRes = await fetch(`${srv.url}/api/auth/api-key/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', cookie: cookies },
@@ -105,7 +106,6 @@ describe('Auth', () => {
 
     const apiKey = keyData.key
 
-    // Use API key to ingest
     const ingestRes = await fetch(`${srv.url}/api/ingest`, {
       method: 'POST',
       headers: {
@@ -157,7 +157,6 @@ describe('Auth', () => {
   })
 })
 
-// Helper to extract all set-cookie headers into a single cookie string
 function extractCookies(res: Response): string {
   const setCookieHeaders = res.headers.getAll?.('set-cookie') ?? [res.headers.get('set-cookie') ?? '']
   return setCookieHeaders

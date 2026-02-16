@@ -104,6 +104,13 @@ export function createServer(options: ServerOptions = {}) {
 
       const url = new URL(req.url)
 
+      // Health check — public, no auth
+      if (url.pathname === '/health') {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       // Route Socket.IO requests to the engine
       if (url.pathname.startsWith('/socket.io/')) {
         return engine.handleRequest(req, server)

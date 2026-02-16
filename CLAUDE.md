@@ -1,6 +1,6 @@
 # AgentFlow
 
-Real-time observability platform for AI agent sessions (Claude Code, Codex CLI, Claude Agent SDK).
+Real-time observability platform for AI agent sessions (Claude Code, Codex CLI, Claude Agent SDK, Open Code).
 
 ## Tech Stack
 
@@ -26,7 +26,7 @@ server.ts                  # Entry point — reads PORT and AGENT_FLOW_DB env va
 src/
   server-factory.ts        # createServer() factory — returns { server, io, url, close }
   routes.ts                # API routes (createRouter(io))
-  normalize.ts             # Event normalization per source (claude-code, codex)
+  normalize.ts             # Event normalization per source (claude-code, codex, opencode)
   types.ts                 # Core types: AgentFlowEvent, Session, IngestPayload
   db/
     index.ts               # Database operations (initDb, addEvent, getSession, etc.)
@@ -38,9 +38,12 @@ adapters/
   claude-code-hooks.sh     # Bash hook for Claude Code integration
   claude-code-sdk.ts       # TypeScript adapter for Claude Agent SDK
   codex-pipe.sh            # Bash pipe wrapper for Codex CLI
+  opencode-plugin.ts       # Open Code plugin adapter
+  opencode-pipe.sh         # Bash pipe wrapper for Open Code CLI
 tests/
   claude-code-streaming.test.ts
   codex-streaming.test.ts
+  opencode-streaming.test.ts
   integration.test.ts
 ```
 
@@ -62,6 +65,7 @@ tests/
 | DELETE | `/api/sessions/:id` | Delete session |
 | DELETE | `/api/sessions` | Clear all |
 | GET | `/setup/hook.sh` | Download hook script with correct server URL |
+| GET | `/setup/opencode-plugin.ts` | Download Open Code plugin with correct server URL |
 
 ## Database
 

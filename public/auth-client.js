@@ -1,14 +1,8 @@
-// AgentFlow — Login/Signup Client
-let isSignUp = false
-
+// AgentFlow — Login Client
 const form = document.getElementById('auth-form')
-const formTitle = document.getElementById('form-title')
-const nameField = document.getElementById('name-field')
-const inputName = document.getElementById('input-name')
 const inputEmail = document.getElementById('input-email')
 const inputPassword = document.getElementById('input-password')
 const submitBtn = document.getElementById('submit-btn')
-const toggleMode = document.getElementById('toggle-mode')
 const errorMsg = document.getElementById('error-msg')
 
 // Check if already authenticated
@@ -19,42 +13,21 @@ fetch('/api/auth/get-session', { credentials: 'include' })
   })
   .catch(() => {})
 
-toggleMode.addEventListener('click', () => {
-  isSignUp = !isSignUp
-  formTitle.textContent = isSignUp ? 'Sign Up' : 'Sign In'
-  nameField.classList.toggle('hidden', !isSignUp)
-  submitBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In'
-  toggleMode.textContent = isSignUp
-    ? 'Already have an account? Sign In'
-    : "Don't have an account? Sign Up"
-  inputPassword.autocomplete = isSignUp ? 'new-password' : 'current-password'
-  errorMsg.classList.add('hidden')
-})
-
 form.addEventListener('submit', async (e) => {
   e.preventDefault()
   errorMsg.classList.add('hidden')
   submitBtn.disabled = true
-  submitBtn.textContent = isSignUp ? 'Signing up...' : 'Signing in...'
-
-  const email = inputEmail.value.trim()
-  const password = inputPassword.value
-  const name = inputName.value.trim() || email.split('@')[0]
+  submitBtn.textContent = 'Signing in...'
 
   try {
-    const endpoint = isSignUp
-      ? '/api/auth/sign-up/email'
-      : '/api/auth/sign-in/email'
-
-    const body = isSignUp
-      ? { email, password, name }
-      : { email, password }
-
-    const res = await fetch(endpoint, {
+    const res = await fetch('/api/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        email: inputEmail.value.trim(),
+        password: inputPassword.value,
+      }),
     })
 
     const data = await res.json()
@@ -70,6 +43,6 @@ form.addEventListener('submit', async (e) => {
     errorMsg.classList.remove('hidden')
   } finally {
     submitBtn.disabled = false
-    submitBtn.textContent = isSignUp ? 'Sign Up' : 'Sign In'
+    submitBtn.textContent = 'Sign In'
   }
 })

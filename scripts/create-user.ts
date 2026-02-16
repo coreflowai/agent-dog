@@ -15,8 +15,8 @@ if (!email || !password) {
 const dbPath = process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
 initDb(dbPath)
 
-await migrateAuth()
-const auth = createAuth()
+await migrateAuth({ disableSignUp: false })
+const auth = createAuth({ disableSignUp: false })
 
 try {
   const result = await auth.api.signUpEmail({
