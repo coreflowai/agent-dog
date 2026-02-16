@@ -1076,6 +1076,8 @@ function renderBubbles() {
 
   bubbleCount.textContent = active.length
   bubbleEmpty.classList.toggle('hidden', active.length > 0)
+  const hasWaiting = active.some(s => isSessionWaiting(s))
+  btnClearWaiting.classList.toggle('hidden', !hasWaiting)
 
   // Hide the static cooking/waiting sections (we generate everything dynamically)
   sectionCooking.classList.add('hidden')
@@ -1238,6 +1240,13 @@ function bubbleSelectSession(id) {
   selectedSessionIdx = filteredSessions.findIndex(s => s.id === id)
   selectSession(id)
 }
+
+// Clear all waiting sessions
+const btnClearWaiting = document.getElementById('btn-clear-waiting')
+btnClearWaiting.addEventListener('click', () => {
+  const waiting = getActiveSessions().filter(s => isSessionWaiting(s))
+  waiting.forEach(s => archiveSessionById(s.id))
+})
 
 // Event delegation for bubble archive buttons
 document.getElementById('bubble-scroll').addEventListener('click', (e) => {

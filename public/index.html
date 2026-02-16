@@ -154,9 +154,12 @@
         <span class="font-semibold text-[10px] sm:text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Active Sessions</span>
         <span id="bubble-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
       </div>
-      <select id="bubble-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
-        <option value="">All users</option>
-      </select>
+      <div class="flex items-center gap-2">
+        <button id="btn-clear-waiting" class="btn btn-xs btn-ghost opacity-40 hover:opacity-100 text-[10px] hidden" title="Archive all waiting sessions">clear waiting</button>
+        <select id="bubble-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
+          <option value="">All users</option>
+        </select>
+      </div>
     </div>
     <div id="bubble-scroll" class="flex-1 overflow-y-auto p-6 space-y-6">
       <div id="bubble-empty" class="flex items-center justify-center h-full">
