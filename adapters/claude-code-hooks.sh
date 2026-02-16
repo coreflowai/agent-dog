@@ -38,7 +38,7 @@ if [ "$HOOK_EVENT" = "PreToolUse" ] || [ "$HOOK_EVENT" = "Stop" ]; then
             -H "Content-Type: application/json" \
             ${AGENT_FLOW_API_KEY:+-H "x-api-key: $AGENT_FLOW_API_KEY"} \
             -d "$(jq -n --arg s "$SESSION_ID" --arg msg "$NEW_TEXT" \
-              '{source:"claude-code",sessionId:$s,event:{hook_event_name:"message.assistant",session_id:$s,message:$msg}}')" &
+              '{source:"claude-code",sessionId:$s,event:{hook_event_name:"message.assistant",session_id:$s,message:$msg}}')"
         fi
       fi
     fi
@@ -81,6 +81,4 @@ curl -s -X POST "$AGENT_FLOW_URL/api/ingest" \
   -H "Content-Type: application/json" \
   ${AGENT_FLOW_API_KEY:+-H "x-api-key: $AGENT_FLOW_API_KEY"} \
   -d "$(jq -n --arg s "$SESSION_ID" --argjson e "$INPUT" --argjson u "$USER_OBJ" \
-    '{source:"claude-code",sessionId:$s,event:$e,user:$u}')" &
-
-exit 0
+    '{source:"claude-code",sessionId:$s,event:$e,user:$u}')"
