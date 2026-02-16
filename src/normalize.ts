@@ -284,39 +284,51 @@ function normalizeOpencodePlugin(
         meta: properties.status ? { status: properties.status } : {},
       }
 
-    case 'message.updated': {
-      const msg = (properties.info ?? properties.message ?? properties) as Record<string, unknown>
-      const role = (msg.role ?? '') as string
-      if (role === 'user') {
-        return {
-          ...base,
-          category: 'message',
-          type: 'message.user',
-          role: 'user',
-          text: (msg.content ?? msg.text ?? null) as string | null,
-        }
-      }
-      return {
-        ...base,
-        category: 'message',
-        type: 'message.assistant',
-        role: 'assistant',
-        text: (msg.content ?? msg.text ?? null) as string | null,
-      }
-    }
+    case 'message.updated':
+      // Skip — actual text content arrives via message.part.updated to avoid duplicates
+      return { ...base, meta: { rawEvent: event } }
 
     case 'message.part.updated': {
       const part = (properties.part ?? {}) as Record<string, unknown>
       const partType = (part.type ?? '') as string
       const status = (part.status ?? (part.state as Record<string, unknown>)?.status ?? '') as string
+      // _role is injected by the plugin from message.updated tracking
+      const partRole = ((properties._role ?? 'assistant') as string)
 
       if (partType === 'text') {
+        const isUser = partRole === 'user'
         return {
           ...base,
           category: 'message',
-          type: 'message.assistant',
-          role: 'assistant',
+          type: isUser ? 'message.user' : 'message.assistant',
+          role: isUser ? 'user' : 'assistant',
           text: (part.text ?? part.content ?? null) as string | null,
+        }
+      }
+
+      if (partType === 'reasoning') {
+        return {
+          ...base,
+          category: 'system',
+          type: 'reasoning',
+          text: (part.text ?? null) as string | null,
+        }
+      }
+
+      if (partType === 'step-start') {
+        return { ...base, category: 'system', type: 'step.start' }
+      }
+
+      if (partType === 'step-finish') {
+        return {
+          ...base,
+          category: 'system',
+          type: 'step.finish',
+          meta: {
+            ...(part.cost != null ? { cost: part.cost } : {}),
+            ...(part.tokens != null ? { tokens: part.tokens } : {}),
+            ...(part.reason ? { reason: part.reason } : {}),
+          },
         }
       }
 

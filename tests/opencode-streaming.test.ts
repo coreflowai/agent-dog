@@ -71,35 +71,40 @@ describe('Open Code Streaming', () => {
         type: 'session.created',
         properties: { info: { id: SESSION_ID, title: 'Fix bug in auth' } },
       },
-      // message.updated (user)
+      // message.updated (user) — metadata only, no text
       {
         type: 'message.updated',
-        properties: { message: { role: 'user', content: 'Fix the login bug' } },
+        properties: { info: { id: 'msg-1', sessionID: SESSION_ID, role: 'user' } },
       },
-      // message.part.updated (text)
+      // message.part.updated (user text)
       {
         type: 'message.part.updated',
-        properties: { part: { type: 'text', text: 'I will fix the login bug.' } },
+        properties: { part: { id: 'prt-u1', sessionID: SESSION_ID, messageID: 'msg-1', type: 'text', text: 'Fix the login bug' }, _role: 'user' },
       },
-      // tool.execute.before
+      // message.updated (assistant) — metadata only
       {
-        type: 'tool.execute.before',
-        properties: { tool: 'read_file' },
-        tool: 'read_file',
-        args: { path: 'src/auth.ts' },
+        type: 'message.updated',
+        properties: { info: { id: 'msg-2', sessionID: SESSION_ID, role: 'assistant' } },
       },
-      // tool.execute.after
+      // message.part.updated (assistant text)
       {
-        type: 'tool.execute.after',
-        properties: { tool: 'read_file', result: 'file contents...' },
-        tool: 'read_file',
-        args: { path: 'src/auth.ts' },
-        result: 'file contents...',
+        type: 'message.part.updated',
+        properties: { part: { id: 'prt-a1', sessionID: SESSION_ID, messageID: 'msg-2', type: 'text', text: 'I will fix the login bug.' }, _role: 'assistant' },
+      },
+      // message.part.updated (tool running)
+      {
+        type: 'message.part.updated',
+        properties: { part: { id: 'prt-t1', sessionID: SESSION_ID, messageID: 'msg-2', type: 'tool', tool: 'read_file', state: { status: 'running', input: { path: 'src/auth.ts' } } } },
+      },
+      // message.part.updated (tool completed)
+      {
+        type: 'message.part.updated',
+        properties: { part: { id: 'prt-t1', sessionID: SESSION_ID, messageID: 'msg-2', type: 'tool', tool: 'read_file', state: { status: 'completed', input: { path: 'src/auth.ts' }, output: 'file contents...' } } },
       },
       // session.idle
       {
         type: 'session.idle',
-        properties: {},
+        properties: { sessionID: SESSION_ID },
       },
     ]
 
@@ -107,9 +112,9 @@ describe('Open Code Streaming', () => {
       await postEvent(srv.url, SESSION_ID, event)
     }
 
-    await testClient.waitForEvents(6)
+    await testClient.waitForEvents(8)
 
-    expect(testClient.events.length).toBe(6)
+    expect(testClient.events.length).toBe(8)
 
     // session.created → session.start
     expect(testClient.events[0].type).toBe('session.start')
@@ -117,30 +122,35 @@ describe('Open Code Streaming', () => {
     expect(testClient.events[0].category).toBe('session')
     expect(testClient.events[0].meta.title).toBe('Fix bug in auth')
 
-    // message.updated (user) → message.user
-    expect(testClient.events[1].type).toBe('message.user')
-    expect(testClient.events[1].role).toBe('user')
-    expect(testClient.events[1].text).toBe('Fix the login bug')
-    expect(testClient.events[1].category).toBe('message')
+    // message.updated (user) → system (metadata only, no text)
+    expect(testClient.events[1].type).toBe('message.updated')
 
-    // message.part.updated (text) → message.assistant
-    expect(testClient.events[2].type).toBe('message.assistant')
-    expect(testClient.events[2].role).toBe('assistant')
-    expect(testClient.events[2].text).toBe('I will fix the login bug.')
+    // message.part.updated (user text) → message.user
+    expect(testClient.events[2].type).toBe('message.user')
+    expect(testClient.events[2].role).toBe('user')
+    expect(testClient.events[2].text).toBe('Fix the login bug')
+    expect(testClient.events[2].category).toBe('message')
 
-    // tool.execute.before → tool.start
-    expect(testClient.events[3].type).toBe('tool.start')
-    expect(testClient.events[3].toolName).toBe('read_file')
-    expect(testClient.events[3].category).toBe('tool')
+    // message.updated (assistant) → system (metadata only)
+    expect(testClient.events[3].type).toBe('message.updated')
 
-    // tool.execute.after → tool.end
-    expect(testClient.events[4].type).toBe('tool.end')
-    expect(testClient.events[4].toolName).toBe('read_file')
-    expect(testClient.events[4].category).toBe('tool')
+    // message.part.updated (assistant text) → message.assistant
+    expect(testClient.events[4].type).toBe('message.assistant')
+    expect(testClient.events[4].role).toBe('assistant')
+    expect(testClient.events[4].text).toBe('I will fix the login bug.')
+
+    // tool.start (running) + tool.end (completed) — from same part ID
+    expect(testClient.events[5].type).toBe('tool.start')
+    expect(testClient.events[5].toolName).toBe('read_file')
+    expect(testClient.events[5].category).toBe('tool')
+
+    expect(testClient.events[6].type).toBe('tool.end')
+    expect(testClient.events[6].toolName).toBe('read_file')
+    expect(testClient.events[6].category).toBe('tool')
 
     // session.idle → session.end
-    expect(testClient.events[5].type).toBe('session.end')
-    expect(testClient.events[5].category).toBe('session')
+    expect(testClient.events[7].type).toBe('session.end')
+    expect(testClient.events[7].category).toBe('session')
 
     testClient.close()
   })
@@ -192,7 +202,7 @@ describe('Open Code Streaming', () => {
     const data = await res.json() as any[]
     const session = data.find((s: any) => s.id === SESSION_ID)
     expect(session).toBeDefined()
-    expect(session.eventCount).toBe(6)
+    expect(session.eventCount).toBe(8)
     expect(session.source).toBe('opencode')
   })
 
@@ -200,7 +210,7 @@ describe('Open Code Streaming', () => {
     const res = await fetch(`${srv.url}/api/sessions/${SESSION_ID}`)
     const data = await res.json() as any
     expect(data.id).toBe(SESSION_ID)
-    expect(data.events.length).toBe(6)
+    expect(data.events.length).toBe(8)
     expect(data.status).toBe('completed')
   })
 

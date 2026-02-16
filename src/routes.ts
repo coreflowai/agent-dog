@@ -243,6 +243,8 @@ function getUser() {
 }
 
 const user = getUser();
+const messageRoles = new Map<string, string>();
+const finalizedParts = new Set<string>();
 
 function post(sessionId: string, event: Record<string, unknown>) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -255,12 +257,10 @@ function post(sessionId: string, event: Record<string, unknown>) {
 }
 
 function extractSessionId(event: any): string | null {
-  if (event.properties?.info?.id) return event.properties.info.id;
   if (event.properties?.sessionID) return event.properties.sessionID;
   if (event.properties?.info?.sessionID) return event.properties.info.sessionID;
   if (event.properties?.part?.sessionID) return event.properties.part.sessionID;
-  if (event.properties?.session?.id) return event.properties.session.id;
-  if (event.sessionId) return event.sessionId;
+  if (event.type?.startsWith("session.") && event.properties?.info?.id) return event.properties.info.id;
   return null;
 }
 
@@ -270,6 +270,31 @@ export const AgentFlowPlugin = async () => {
     event: async ({ event }: { event: any }) => {
       const sessionId = extractSessionId(event);
       if (!sessionId) return;
+      if (event.type === "message.updated" && event.properties?.info) {
+        const msg = event.properties.info;
+        if (msg.id && msg.role) messageRoles.set(msg.id, msg.role);
+      }
+      if (event.type === "message.part.updated") {
+        const part = event.properties?.part;
+        if (!part) return;
+        const partId = part.id;
+        const partType = part.type;
+        if (partType === "text" || partType === "reasoning") {
+          if (part.time && !part.time.end) return;
+          if (finalizedParts.has(partId)) return;
+          finalizedParts.add(partId);
+        }
+        if (partType === "tool") {
+          const status = part.state?.status;
+          const key = partId + ":" + status;
+          if (finalizedParts.has(key)) return;
+          finalizedParts.add(key);
+        }
+        const role = part.messageID ? messageRoles.get(part.messageID) : undefined;
+        const properties = role ? { ...event.properties, _role: role } : event.properties;
+        post(sessionId, { type: event.type, properties });
+        return;
+      }
       post(sessionId, { type: event.type, properties: event.properties });
     },
   };

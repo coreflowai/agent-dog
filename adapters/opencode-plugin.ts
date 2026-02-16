@@ -7,10 +7,12 @@
  * Environment variables:
  *   AGENT_FLOW_URL    - AgentFlow server URL (default: http://localhost:3333)
  *   AGENT_FLOW_API_KEY - Optional API key for authenticated servers
+ *   AGENT_FLOW_DEBUG  - Set to "1" to log raw events to /tmp/agent-flow-debug.jsonl
  */
 
 const AGENT_FLOW_URL = process.env.AGENT_FLOW_URL || "http://localhost:3333";
 const AGENT_FLOW_API_KEY = process.env.AGENT_FLOW_API_KEY || "";
+const DEBUG = process.env.AGENT_FLOW_DEBUG === "1";
 
 function getUser() {
   try {
@@ -31,6 +33,17 @@ function getUser() {
 }
 
 const user = getUser();
+const messageRoles = new Map<string, string>();
+// Track which parts have already been forwarded in final form
+const finalizedParts = new Set<string>();
+
+function debugLog(event: any) {
+  if (!DEBUG) return;
+  try {
+    const fs = require("fs");
+    fs.appendFileSync("/tmp/agent-flow-debug.jsonl", JSON.stringify(event) + "\n");
+  } catch {}
+}
 
 function post(sessionId: string, event: Record<string, unknown>) {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -48,12 +61,10 @@ function post(sessionId: string, event: Record<string, unknown>) {
 }
 
 function extractSessionId(event: any): string | null {
-  if (event.properties?.info?.id) return event.properties.info.id;
   if (event.properties?.sessionID) return event.properties.sessionID;
   if (event.properties?.info?.sessionID) return event.properties.info.sessionID;
   if (event.properties?.part?.sessionID) return event.properties.part.sessionID;
-  if (event.properties?.session?.id) return event.properties.session.id;
-  if (event.sessionId) return event.sessionId;
+  if (event.type?.startsWith("session.") && event.properties?.info?.id) return event.properties.info.id;
   return null;
 }
 
@@ -61,8 +72,50 @@ export const AgentFlowPlugin = async () => {
   return {
     name: "agent-flow",
     event: async ({ event }: { event: any }) => {
+      debugLog(event);
       const sessionId = extractSessionId(event);
       if (!sessionId) return;
+
+      // Track message roles from message.updated events
+      if (event.type === "message.updated" && event.properties?.info) {
+        const msg = event.properties.info;
+        if (msg.id && msg.role) messageRoles.set(msg.id, msg.role);
+      }
+
+      // For message.part.updated: deduplicate streaming updates
+      // Only forward parts that are finalized (have time.end) or non-streaming types
+      if (event.type === "message.part.updated") {
+        const part = event.properties?.part;
+        if (!part) return;
+        const partId = part.id;
+        const partType = part.type;
+
+        // For text/reasoning parts, only forward the final update
+        // User text parts have no time field (not streamed) — always forward
+        // Assistant text parts stream: skip intermediates (time exists but no time.end)
+        if (partType === "text" || partType === "reasoning") {
+          if (part.time && !part.time.end) return; // skip streaming intermediate
+          if (finalizedParts.has(partId)) return; // already sent final
+          finalizedParts.add(partId);
+        }
+
+        // For tool parts, forward on state transitions (running → completed/error)
+        if (partType === "tool") {
+          const status = part.state?.status;
+          const key = `${partId}:${status}`;
+          if (finalizedParts.has(key)) return;
+          finalizedParts.add(key);
+        }
+
+        // Inject role so normalizer can distinguish user vs assistant
+        const role = part.messageID ? messageRoles.get(part.messageID) : undefined;
+        const properties = role
+          ? { ...event.properties, _role: role }
+          : event.properties;
+        post(sessionId, { type: event.type, properties });
+        return;
+      }
+
       post(sessionId, { type: event.type, properties: event.properties });
     },
   };
