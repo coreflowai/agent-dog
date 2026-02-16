@@ -38,3 +38,33 @@ export const invites = sqliteTable('invites', {
   usedAt: integer('used_at'),
   usedBy: text('used_by'),
 })
+
+// Insights tables for AI-generated user behavior analysis
+export const insights = sqliteTable('insights', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),           // GitHub username
+  repoName: text('repo_name'),                 // e.g., "bennykok/agent-dog" (null = all repos)
+  createdAt: integer('created_at').notNull(),
+  analysisWindowStart: integer('analysis_window_start').notNull(),
+  analysisWindowEnd: integer('analysis_window_end').notNull(),
+  sessionsAnalyzed: integer('sessions_analyzed').notNull(),
+  eventsAnalyzed: integer('events_analyzed').notNull(),
+  content: text('content').notNull(),          // Markdown content
+  categories: text('categories', { mode: 'json' }).$type<string[]>(),
+  followUpActions: text('follow_up_actions', { mode: 'json' }),
+  meta: text('meta', { mode: 'json' }),        // Token usage, model, duration, etc.
+}, (table) => [
+  index('idx_insights_user').on(table.userId, table.createdAt),
+  index('idx_insights_repo').on(table.repoName, table.createdAt),
+])
+
+// Track last analysis state per user+repo combination
+export const insightAnalysisState = sqliteTable('insight_analysis_state', {
+  id: text('id').primaryKey(),                 // composite: `${userId}:${repoName || 'all'}`
+  userId: text('user_id').notNull(),
+  repoName: text('repo_name'),                 // null = all repos for user
+  lastAnalyzedAt: integer('last_analyzed_at').notNull(),
+  lastEventTimestamp: integer('last_event_timestamp').notNull(),
+}, (table) => [
+  index('idx_analysis_state_user').on(table.userId),
+])

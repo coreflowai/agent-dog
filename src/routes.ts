@@ -4,6 +4,7 @@ import { resolve } from 'path'
 import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
 import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, archiveSession, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
+import { listInsights, getInsight, deleteInsight } from './db/insights'
 import { createAuth, migrateAuth } from './auth'
 import type { IngestPayload } from './types'
 
@@ -399,6 +400,33 @@ export const AgentFlowPlugin = async () => {
       if (invite.usedAt) return json({ valid: false, reason: 'This invite has already been used' })
       if (Date.now() > invite.expiresAt) return json({ valid: false, reason: 'This invite has expired' })
       return json({ valid: true, email: invite.email || null })
+    }
+
+    // --- Insights API ---
+
+    // GET /api/insights
+    if (req.method === 'GET' && pathname === '/api/insights') {
+      const userIdParam = url.searchParams.get('userId') || undefined
+      const repoName = url.searchParams.get('repoName') || undefined
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+      return json(listInsights({ userId: userIdParam, repoName, limit, offset }))
+    }
+
+    // GET /api/insights/:id
+    if (req.method === 'GET' && pathname.startsWith('/api/insights/')) {
+      const id = pathname.replace('/api/insights/', '')
+      const insight = getInsight(id)
+      if (!insight) return json({ error: 'Insight not found' }, 404)
+      return json(insight)
+    }
+
+    // DELETE /api/insights/:id
+    if (req.method === 'DELETE' && pathname.startsWith('/api/insights/')) {
+      const id = pathname.replace('/api/insights/', '')
+      deleteInsight(id)
+      io.emit('insight:deleted', id)
+      return json({ ok: true })
     }
 
     // POST /api/invites/redeem — redeem invite + create account (public)

@@ -1,0 +1,169 @@
+import { Cron } from 'croner'
+import type { Server as SocketIOServer } from 'socket.io'
+import { runAnalysis } from './analyzer'
+import {
+  getUserRepoGroupsWithActivity,
+  getAnalysisState,
+  updateAnalysisState,
+  addInsight,
+  countEventsSince,
+} from '../db/insights'
+
+// Minimum events required to trigger analysis
+const MIN_EVENTS_FOR_ANALYSIS = 5
+
+// Default analysis window: 30 minutes
+const DEFAULT_ANALYSIS_WINDOW_MS = 30 * 60 * 1000
+
+export type InsightSchedulerOptions = {
+  /** Socket.IO server for real-time updates */
+  io: SocketIOServer
+  /** Path to the SQLite database */
+  dbPath: string
+  /** Cron expression (default: every 30 minutes) */
+  cronExpression?: string
+  /** Whether to run immediately on start */
+  runOnStart?: boolean
+  /** Minimum events required to trigger analysis */
+  minEventsForAnalysis?: number
+}
+
+export type InsightScheduler = {
+  /** Stop the scheduler */
+  stop: () => void
+  /** Run analysis manually */
+  runNow: () => Promise<void>
+  /** Check if scheduler is running */
+  isRunning: () => boolean
+}
+
+/**
+ * Create and start the insight analysis scheduler.
+ * Runs every 30 minutes by default, analyzing sessions per user+repo.
+ */
+export function createInsightScheduler(options: InsightSchedulerOptions): InsightScheduler {
+  const {
+    io,
+    dbPath,
+    cronExpression = '*/30 * * * *', // Every 30 minutes
+    runOnStart = false,
+    minEventsForAnalysis = MIN_EVENTS_FOR_ANALYSIS,
+  } = options
+
+  let isAnalyzing = false
+
+  async function runAnalysisJob() {
+    if (isAnalyzing) {
+      console.log('[InsightScheduler] Analysis already in progress, skipping')
+      return
+    }
+
+    isAnalyzing = true
+    console.log('[InsightScheduler] Starting analysis run at', new Date().toISOString())
+
+    try {
+      // Get all user+repo groups that have had activity
+      const groups = getUserRepoGroupsWithActivity(0)
+      console.log(`[InsightScheduler] Found ${groups.length} user+repo groups`)
+
+      for (const group of groups) {
+        try {
+          await analyzeGroup(group.userId, group.repoName, minEventsForAnalysis, dbPath, io)
+        } catch (error) {
+          console.error(`[InsightScheduler] Error analyzing ${group.userId}/${group.repoName}:`, error)
+        }
+      }
+
+      console.log('[InsightScheduler] Analysis run completed')
+    } catch (error) {
+      console.error('[InsightScheduler] Error during analysis run:', error)
+    } finally {
+      isAnalyzing = false
+    }
+  }
+
+  // Create the cron job
+  const job = new Cron(cronExpression, {
+    name: 'insight-analysis',
+    protect: true, // Prevent overlapping runs
+  }, runAnalysisJob)
+
+  console.log(`[InsightScheduler] Scheduled with cron: ${cronExpression}`)
+
+  // Run immediately if requested
+  if (runOnStart) {
+    console.log('[InsightScheduler] Running initial analysis...')
+    runAnalysisJob()
+  }
+
+  return {
+    stop: () => {
+      job.stop()
+      console.log('[InsightScheduler] Stopped')
+    },
+    runNow: runAnalysisJob,
+    isRunning: () => job.isRunning(),
+  }
+}
+
+/**
+ * Analyze a single user+repo group.
+ */
+async function analyzeGroup(
+  userId: string,
+  repoName: string | null,
+  minEvents: number,
+  dbPath: string,
+  io: SocketIOServer
+) {
+  const repoLabel = repoName ?? 'all-repos'
+  console.log(`[InsightScheduler] Analyzing ${userId}/${repoLabel}`)
+
+  // Get the last analysis state
+  const state = getAnalysisState(userId, repoName)
+  const sinceTimestamp = state?.lastEventTimestamp ?? 0
+
+  // Count new events since last analysis
+  const newEventCount = countEventsSince(userId, repoName, sinceTimestamp)
+
+  if (newEventCount < minEvents) {
+    console.log(`[InsightScheduler] Skipping ${userId}/${repoLabel}: only ${newEventCount} new events (need ${minEvents})`)
+    return
+  }
+
+  console.log(`[InsightScheduler] Running analysis for ${userId}/${repoLabel} with ${newEventCount} new events`)
+
+  // Run the analysis
+  const analysisWindowStart = sinceTimestamp || Date.now() - DEFAULT_ANALYSIS_WINDOW_MS
+  const analysisWindowEnd = Date.now()
+
+  const result = await runAnalysis(userId, repoName, sinceTimestamp, dbPath)
+
+  if (!result.success) {
+    console.error(`[InsightScheduler] Analysis failed for ${userId}/${repoLabel}:`, result.error)
+    return
+  }
+
+  // Save the insight
+  const insight = addInsight({
+    userId,
+    repoName,
+    content: result.content,
+    categories: result.categories,
+    followUpActions: result.followUpActions,
+    sessionsAnalyzed: result.sessionsAnalyzed,
+    eventsAnalyzed: result.eventsAnalyzed,
+    analysisWindowStart,
+    analysisWindowEnd,
+    meta: result.meta,
+  })
+
+  console.log(`[InsightScheduler] Created insight ${insight.id} for ${userId}/${repoLabel}`)
+
+  // Update analysis state
+  updateAnalysisState(userId, repoName, analysisWindowEnd)
+
+  // Emit real-time update via Socket.IO
+  io.emit('insight:new', insight)
+  console.log(`[InsightScheduler] Emitted insight:new event`)
+}

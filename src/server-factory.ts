@@ -3,6 +3,7 @@ import { Server as SocketIOServer } from 'socket.io'
 import { initDb, listSessions, getSessionEvents } from './db'
 import { createRouter } from './routes'
 import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
+import { createInsightScheduler, type InsightScheduler } from './insights'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -16,15 +17,27 @@ type ServerOptions = {
   dbPath?: string
   serveStatic?: boolean
   authEnabled?: boolean
+  /** Enable insight analysis scheduler (default: true in production) */
+  insightsEnabled?: boolean
+  /** Run insight analysis immediately on start (default: false) */
+  insightsRunOnStart?: boolean
 }
 
 // Files accessible without authentication
 const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js', '/invite.html', '/invite-client.js'])
 
 export function createServer(options: ServerOptions = {}) {
-  const { port = 3333, dbPath, serveStatic = true, authEnabled = true } = options
+  const {
+    port = 3333,
+    dbPath,
+    serveStatic = true,
+    authEnabled = true,
+    insightsEnabled = process.env.NODE_ENV === 'production',
+    insightsRunOnStart = false,
+  } = options
 
-  initDb(dbPath)
+  const resolvedDbPath = dbPath ?? process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
+  initDb(resolvedDbPath)
 
   let auth: Auth | null = null
   let authReady: Promise<void> | null = null
@@ -79,6 +92,16 @@ export function createServer(options: ServerOptions = {}) {
       socket.leave(`session:${sessionId}`)
     })
   })
+
+  // Insight analysis scheduler
+  let insightScheduler: InsightScheduler | null = null
+  if (insightsEnabled) {
+    insightScheduler = createInsightScheduler({
+      io,
+      dbPath: resolvedDbPath,
+      runOnStart: insightsRunOnStart,
+    })
+  }
 
   function serveHtml(filePath: string) {
     const file = Bun.file(filePath)
@@ -210,8 +233,10 @@ export function createServer(options: ServerOptions = {}) {
     server,
     io,
     auth,
+    insightScheduler,
     url: `http://localhost:${server.port}`,
     close: () => {
+      insightScheduler?.stop()
       io.close()
       server.stop(true)
     },

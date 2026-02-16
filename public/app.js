@@ -362,50 +362,57 @@ function renderSessionList() {
     return
   }
 
-  sessionList.innerHTML = filteredSessions.map((s, i) => {
-    const isActive = s.id === currentSessionId
-    const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
-    const isWaitingForUser = s.status === 'active' && (s.lastEventType === 'message.assistant' || s.lastEventType === 'session.start')
-    const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
-      : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
-      : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
-      : ''
-    const time = timeAgo(s.lastEventTime)
-    const dur = s.lastEventTime - s.startTime
-    const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
+  // Group sessions by repo for display — reorder filteredSessions to match display order
+  const repoGroups = groupByRepo(filteredSessions)
+  filteredSessions = repoGroups.flatMap(([, group]) => group)
+  let html = ''
+  let flatIdx = 0
 
-    // User identity from session metadata
-    const user = s.metadata?.user
-    const userName = user?.githubUsername || user?.name || user?.osUser || ''
-    const title = s.metadata?.title || userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
+  for (const [repoKey, repoSessions] of repoGroups) {
+    const displayName = repoKey || 'Other'
+    html += `<div class="repo-group-header px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider opacity-40 bg-base-200/50 border-b border-base-200 sticky top-0 z-10">${esc(displayName)}</div>`
 
-    // Git repo info
-    const git = s.metadata?.git
-    const gitLabel = git ? [git.repoName || git.workDir, git.branch].filter(Boolean).join(' / ') : ''
+    for (const s of repoSessions) {
+      const i = flatIdx++
+      const isActive = s.id === currentSessionId
+      const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
+      const isWaitingForUser = s.status === 'active' && (s.lastEventType === 'message.assistant' || s.lastEventType === 'session.start')
+      const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
+        : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
+        : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
+        : ''
+      const time = timeAgo(s.lastEventTime)
+      const dur = s.lastEventTime - s.startTime
+      const durStr = dur > 60000 ? Math.floor(dur / 60000) + 'm' : Math.floor(dur / 1000) + 's'
 
-    // Latest action preview
-    const lastText = s.lastEventText ? esc(truncate(s.lastEventText, 40)) : ''
-    const lastLabel = formatSessionLastEvent(s.lastEventType)
+      const user = s.metadata?.user
+      const userName = user?.githubUsername || user?.name || user?.osUser || ''
+      const title = s.metadata?.title || userName || (s.id.length > 14 ? s.id.slice(0, 14) + '..' : s.id)
 
-    const archiveBtn = s.status !== 'archived'
-      ? `<button class="archive-btn btn btn-xs btn-ghost px-1" data-archive="${s.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>`
-      : ''
+      const lastText = s.lastEventText ? esc(truncate(s.lastEventText, 40)) : ''
+      const lastLabel = formatSessionLastEvent(s.lastEventType)
 
-    return `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
-      <div class="opacity-60 flex-shrink-0">${icon}</div>
-      <div class="flex-1 min-w-0">
-        <div class="text-xs truncate font-medium">${lastText ? lastText : lastLabel}</div>
-        <div class="text-[10px] opacity-50 truncate">${esc(title)}${lastText ? ' · ' + lastLabel : ''}</div>
-        ${gitLabel ? `<div class="text-[10px] opacity-40 truncate">${esc(gitLabel)}</div>` : ''}
-        <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
-      </div>
-      <div class="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
-        <div class="text-xs font-bold">${s.eventCount}</div>
-        <div>${status}</div>
-        ${archiveBtn}
-      </div>
-    </div>`
-  }).join('')
+      const archiveBtn = s.status !== 'archived'
+        ? `<button class="archive-btn btn btn-xs btn-ghost px-1" data-archive="${s.id}" title="Archive session"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></button>`
+        : ''
+
+      html += `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
+        <div class="opacity-60 flex-shrink-0">${icon}</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs truncate font-medium">${lastText ? lastText : lastLabel}</div>
+          <div class="text-[10px] opacity-50 truncate">${esc(title)}${lastText ? ' · ' + lastLabel : ''}</div>
+          <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
+        </div>
+        <div class="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
+          <div class="text-xs font-bold">${s.eventCount}</div>
+          <div>${status}</div>
+          ${archiveBtn}
+        </div>
+      </div>`
+    }
+  }
+
+  sessionList.innerHTML = html
 
   sessionList.querySelectorAll('.session-item').forEach(el => {
     el.addEventListener('click', () => {
@@ -1056,19 +1063,18 @@ function isBubbleWaiting(session) {
 
 function renderBubbles() {
   const active = getActiveSessions()
-  const cooking = active.filter(s => !isBubbleWaiting(s))
-  const waiting = active.filter(s => isBubbleWaiting(s))
+  const groups = groupByRepo(active)
 
   bubbleCount.textContent = active.length
   bubbleEmpty.classList.toggle('hidden', active.length > 0)
-  sectionCooking.classList.toggle('hidden', cooking.length === 0)
-  sectionWaiting.classList.toggle('hidden', waiting.length === 0)
-  cookingCount.textContent = cooking.length
-  waitingCount.textContent = waiting.length
+
+  // Hide the static cooking/waiting sections (we generate everything dynamically)
+  sectionCooking.classList.add('hidden')
+  sectionWaiting.classList.add('hidden')
 
   const activeIds = new Set(active.map(s => s.id))
 
-  // Exit bubbles for sessions no longer active (from both containers)
+  // Exit bubbles for sessions no longer active
   document.querySelectorAll('#bubble-scroll .agent-bubble').forEach(el => {
     if (!activeIds.has(el.dataset.sid)) {
       el.classList.add('exiting')
@@ -1077,30 +1083,86 @@ function renderBubbles() {
     }
   })
 
-  // Place each active session in the correct container
-  active.forEach(s => {
-    const targetContainer = isBubbleWaiting(s) ? waitingContainer : cookingContainer
-    const otherContainer = isBubbleWaiting(s) ? cookingContainer : waitingContainer
-    const category = isBubbleWaiting(s) ? 'waiting' : 'cooking'
+  // Track which repo groups are still needed
+  const activeRepoKeys = new Set(groups.map(([key]) => key === null ? '__other__' : key))
 
-    // Find existing bubble in either container
-    let el = targetContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
-      || otherContainer.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
-
-    if (el) {
-      // Move to correct container if needed
-      if (el.parentNode !== targetContainer) {
-        el.classList.remove('cooking', 'waiting')
-        el.classList.add(category)
-        targetContainer.appendChild(el)
-      }
-      updateBubbleContent(el, s)
-    } else {
-      el = createBubbleElement(s, category)
-      targetContainer.appendChild(el)
-      requestAnimationFrame(() => el.classList.add('visible'))
-    }
+  // Remove stale repo groups
+  document.querySelectorAll('#bubble-scroll .repo-group').forEach(el => {
+    if (!activeRepoKeys.has(el.dataset.repo)) el.remove()
   })
+
+  const bubbleScroll = document.getElementById('bubble-scroll')
+
+  for (const [repoKey, repoSessions] of groups) {
+    const dataKey = repoKey === null ? '__other__' : repoKey
+    const displayName = repoKey || 'Other'
+
+    // Get or create repo group container
+    let groupEl = bubbleScroll.querySelector(`.repo-group[data-repo="${dataKey}"]`)
+    if (!groupEl) {
+      groupEl = document.createElement('div')
+      groupEl.className = 'repo-group'
+      groupEl.dataset.repo = dataKey
+      groupEl.innerHTML = `
+        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3">${esc(displayName)}</div>
+        <div class="bubble-subsection cooking mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="css-spinner"></span>
+            <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Cooking</span>
+            <span class="repo-cooking-count badge badge-xs badge-ghost text-[9px]">0</span>
+          </div>
+          <div class="cooking-container bubble-category flex flex-wrap gap-4"></div>
+        </div>
+        <div class="bubble-subsection waiting">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-[10px] opacity-30">&#9679;</span>
+            <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Waiting for response</span>
+            <span class="repo-waiting-count badge badge-xs badge-ghost text-[9px]">0</span>
+          </div>
+          <div class="waiting-container bubble-category flex flex-wrap gap-4"></div>
+        </div>
+      `
+      // Insert before #bubble-empty (keep empty state at top) or append
+      bubbleScroll.appendChild(groupEl)
+    }
+
+    const cookingContainer = groupEl.querySelector('.cooking-container')
+    const waitingContainer = groupEl.querySelector('.waiting-container')
+    const cookingSub = groupEl.querySelector('.bubble-subsection.cooking')
+    const waitingSub = groupEl.querySelector('.bubble-subsection.waiting')
+
+    const cooking = repoSessions.filter(s => !isBubbleWaiting(s))
+    const waiting = repoSessions.filter(s => isBubbleWaiting(s))
+
+    cookingSub.classList.toggle('hidden', cooking.length === 0)
+    waitingSub.classList.toggle('hidden', waiting.length === 0)
+    groupEl.querySelector('.repo-cooking-count').textContent = cooking.length
+    groupEl.querySelector('.repo-waiting-count').textContent = waiting.length
+
+    // Place each session in the correct sub-container
+    for (const s of repoSessions) {
+      const targetContainer = isBubbleWaiting(s) ? waitingContainer : cookingContainer
+      const otherContainer = isBubbleWaiting(s) ? cookingContainer : waitingContainer
+      const category = isBubbleWaiting(s) ? 'waiting' : 'cooking'
+
+      // Find existing bubble anywhere in #bubble-scroll
+      let el = bubbleScroll.querySelector(`.agent-bubble[data-sid="${s.id}"]`)
+
+      if (el) {
+        // Move to correct container if needed
+        if (el.parentNode !== targetContainer) {
+          el.classList.remove('cooking', 'waiting')
+          el.classList.add(category)
+          targetContainer.appendChild(el)
+        }
+        updateBubbleContent(el, s)
+      } else {
+        el = createBubbleElement(s, category)
+        targetContainer.appendChild(el)
+        requestAnimationFrame(() => el.classList.add('visible'))
+      }
+    }
+  }
 }
 
 function createBubbleElement(session, category) {

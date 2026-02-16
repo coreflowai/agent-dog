@@ -50,3 +50,49 @@ export type IngestPayload = {
   user?: UserInfo
   git?: GitInfo
 }
+
+// Insight types
+export type FollowUpAction = {
+  action: string
+  priority: 'low' | 'medium' | 'high'
+  category: 'tooling' | 'workflow' | 'knowledge' | 'other'
+}
+
+export type InsightTokenUsage = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens?: number
+  cacheReadTokens?: number
+  cacheCreationTokens?: number
+}
+
+export type InsightMeta = {
+  tokenUsage?: InsightTokenUsage
+  model?: string
+  durationMs?: number
+  error?: string
+  rawOutput?: string
+}
+
+export type Insight = {
+  id: string
+  userId: string
+  repoName: string | null
+  createdAt: number
+  analysisWindowStart: number
+  analysisWindowEnd: number
+  sessionsAnalyzed: number
+  eventsAnalyzed: number
+  content: string
+  categories: string[]
+  followUpActions: FollowUpAction[]
+  meta: InsightMeta
+}
+
+export type InsightAnalysisState = {
+  id: string
+  userId: string
+  repoName: string | null
+  lastAnalyzedAt: number
+  lastEventTimestamp: number
+}
