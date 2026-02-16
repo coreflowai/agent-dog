@@ -323,6 +323,7 @@ function renderSessionList() {
     const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
     const isWaitingForUser = s.status === 'active' && (s.lastEventType === 'message.assistant' || s.lastEventType === 'session.start')
     const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
+      : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
       : s.status === 'active' && !isWaitingForUser ? '<span class="css-spinner"></span>'
       : ''
     const time = timeAgo(s.lastEventTime)
@@ -338,6 +339,10 @@ function renderSessionList() {
     const lastText = s.lastEventText ? esc(truncate(s.lastEventText, 40)) : ''
     const lastLabel = formatSessionLastEvent(s.lastEventType)
 
+    const archiveBtn = s.status !== 'archived'
+      ? `<button class="archive-btn btn btn-xs btn-ghost text-[9px] px-1" data-archive="${s.id}" title="Archive session">archive</button>`
+      : ''
+
     return `<div class="session-item px-3 py-2 border-b border-base-200 flex items-center gap-2.5 ${isActive ? 'active' : ''}" data-idx="${i}" data-sid="${s.id}" tabindex="0">
       <div class="opacity-60 flex-shrink-0">${icon}</div>
       <div class="flex-1 min-w-0">
@@ -345,9 +350,10 @@ function renderSessionList() {
         <div class="text-[10px] opacity-50 truncate">${lastLabel}${lastText ? ' · ' + lastText : ''}</div>
         <div class="text-[10px] opacity-30">${time} · ${durStr}</div>
       </div>
-      <div class="text-right flex-shrink-0">
+      <div class="text-right flex-shrink-0 flex flex-col items-end gap-0.5">
         <div class="text-xs font-bold">${s.eventCount}</div>
         <div>${status}</div>
+        ${archiveBtn}
       </div>
     </div>`
   }).join('')
@@ -359,6 +365,17 @@ function renderSessionList() {
       selectSession(el.dataset.sid)
     })
   })
+
+  sessionList.querySelectorAll('[data-archive]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      archiveSessionById(btn.dataset.archive)
+    })
+  })
+}
+
+function archiveSessionById(id) {
+  fetch(`/api/sessions/${id}/archive`, { method: 'POST', credentials: 'include' }).catch(() => {})
 }
 
 function selectSession(sessionId) {
@@ -1042,8 +1059,9 @@ function updateBubbleContent(el, session) {
   el.innerHTML = `
     <div class="flex items-center gap-1.5 mb-1">
       <span class="opacity-60 flex-shrink-0">${icon}</span>
-      <span class="text-xs font-medium truncate">${esc(title)}</span>
+      <span class="text-xs font-medium truncate flex-1">${esc(title)}</span>
       ${spinner}
+      <button class="archive-btn btn btn-xs btn-ghost text-[9px] px-1" data-bubble-archive="${session.id}" title="Archive session">archive</button>
     </div>
     ${previewLine}
     <div class="flex items-center justify-between mt-1.5">
@@ -1068,6 +1086,15 @@ function bubbleSelectSession(id) {
   selectedSessionIdx = filteredSessions.findIndex(s => s.id === id)
   selectSession(id)
 }
+
+// Event delegation for bubble archive buttons
+document.getElementById('bubble-scroll').addEventListener('click', (e) => {
+  const archiveBtn = e.target.closest('[data-bubble-archive]')
+  if (archiveBtn) {
+    e.stopPropagation()
+    archiveSessionById(archiveBtn.dataset.bubbleArchive)
+  }
+})
 
 // --- Stale session cleanup (client-side) ---
 setInterval(() => {

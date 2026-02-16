@@ -77,8 +77,8 @@ export function addEvent(event: AgentFlowEvent) {
       .set({ status: 'error', lastEventTime: now })
       .where(eq(sessions.id, event.sessionId))
       .run()
-  } else if (existing && existing.status === 'completed') {
-    // Reactivate if new events come in after completion
+  } else if (existing && (existing.status === 'completed' || existing.status === 'archived')) {
+    // Reactivate if new events come in after completion or archival
     db.update(sessions)
       .set({ status: 'active', lastEventTime: now })
       .where(eq(sessions.id, event.sessionId))
@@ -114,6 +114,7 @@ function deriveEventText(event: { type: string; text: string | null; toolName: s
 }
 
 function deriveStatus(status: string, lastEventTime: number): Session['status'] {
+  if (status === 'archived') return 'archived'
   if (status === 'error') return 'error'
   if (status === 'completed') return 'completed'
   // Auto-complete active sessions after inactivity
@@ -229,6 +230,14 @@ export function updateSessionMeta(id: string, meta: Record<string, unknown>) {
   const existing = (row.metadata ?? {}) as Record<string, unknown>
   db.update(sessions)
     .set({ metadata: { ...existing, ...meta } })
+    .where(eq(sessions.id, id))
+    .run()
+}
+
+export function archiveSession(id: string) {
+  const db = getDb()
+  db.update(sessions)
+    .set({ status: 'archived' })
     .where(eq(sessions.id, id))
     .run()
 }

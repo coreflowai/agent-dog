@@ -3,7 +3,7 @@ import { homedir } from 'os'
 import { resolve } from 'path'
 import type { Server as SocketIOServer } from 'socket.io'
 import { normalize } from './normalize'
-import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
+import { addEvent, getSession, getSessionEvents, listSessions, deleteSession, clearAll, updateSessionMeta, updateSessionUserId, archiveSession, createInvite, getInviteByToken, listInvites, markInviteUsed, deleteInvite } from './db'
 import { createAuth, migrateAuth } from './auth'
 import type { IngestPayload } from './types'
 
@@ -93,6 +93,16 @@ export function createRouter(io: SocketIOServer) {
       if (!session) return json({ error: 'Session not found' }, 404)
       const events = getSessionEvents(id)
       return json({ ...session, events })
+    }
+
+    // POST /api/sessions/:id/archive
+    if (req.method === 'POST' && pathname.match(/^\/api\/sessions\/[^/]+\/archive$/)) {
+      const id = pathname.replace('/api/sessions/', '').replace('/archive', '')
+      const session = getSession(id)
+      if (!session) return json({ error: 'Session not found' }, 404)
+      archiveSession(id)
+      io.emit('session:update', getSession(id))
+      return json({ ok: true })
     }
 
     // DELETE /api/sessions/:id

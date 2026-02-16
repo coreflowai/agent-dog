@@ -59,6 +59,11 @@
     .bubble-section:has(.agent-bubble:not(.exiting)) .bubble-section-empty { display: none; }
     .bubble-category { min-height: 48px; }
 
+    /* Archive button hover-reveal */
+    .archive-btn { opacity: 0; transition: opacity 0.15s; }
+    .session-item:hover .archive-btn, .agent-bubble:hover .archive-btn { opacity: 0.5; }
+    .archive-btn:hover { opacity: 1 !important; }
+
     /* Mobile responsive */
     @media (max-width: 767px) {
       #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }

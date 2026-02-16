@@ -19,7 +19,7 @@ export type Session = {
   source: 'claude-code' | 'codex' | 'opencode'
   startTime: number
   lastEventTime: number
-  status: 'active' | 'completed' | 'error'
+  status: 'active' | 'completed' | 'error' | 'archived'
   lastEventType: string | null
   lastEventText: string | null
   eventCount: number
