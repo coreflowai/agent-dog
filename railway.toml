@@ -3,7 +3,7 @@ builder = "railpack"
 
 [deploy]
 startCommand = "bun run server.ts"
-healthcheckPath = "/"
+healthcheckPath = "/health"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
