@@ -1243,22 +1243,22 @@ function renderBubbles() {
       groupEl.className = 'repo-group'
       groupEl.dataset.repo = dataKey
       groupEl.innerHTML = `
-        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3">${esc(displayName)}</div>
+        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3 text-center">${esc(displayName)}</div>
         <div class="bubble-subsection cooking mb-4">
-          <div class="flex items-center gap-2 mb-2">
+          <div class="flex items-center gap-2 mb-2 justify-center">
             <span class="css-spinner"></span>
             <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Cooking</span>
             <span class="repo-cooking-count badge badge-xs badge-ghost text-[9px]">0</span>
           </div>
-          <div class="cooking-container bubble-category flex flex-wrap gap-4"></div>
+          <div class="cooking-container bubble-category flex flex-wrap gap-4 justify-center"></div>
         </div>
         <div class="bubble-subsection waiting">
-          <div class="flex items-center gap-2 mb-2">
+          <div class="flex items-center gap-2 mb-2 justify-center">
             <span class="text-[10px] opacity-30">&#9679;</span>
             <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Waiting for response</span>
             <span class="repo-waiting-count badge badge-xs badge-ghost text-[9px]">0</span>
           </div>
-          <div class="waiting-container bubble-category flex flex-wrap gap-4"></div>
+          <div class="waiting-container bubble-category flex flex-wrap gap-4 justify-center"></div>
         </div>
       `
       // Insert before #bubble-empty (keep empty state at top) or append
@@ -1540,7 +1540,6 @@ function renderInsights() {
   // Build list items
   const listHtml = filtered.map(insight => {
     const time = timeAgo(insight.createdAt)
-    const repo = insight.repoName || 'All repos'
     const sessions = insight.sessionsAnalyzed || 0
     const events = insight.eventsAnalyzed || 0
     const isActive = insight.id === selectedInsightId
@@ -1548,24 +1547,22 @@ function renderInsights() {
     // Extract summary from content (first non-empty line after ## Summary)
     const summaryMatch = insight.content?.match(/## Summary\n+([^\n#]+)/)
     const summary = summaryMatch ? summaryMatch[1].trim() : ''
-    const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 80)
+    const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 100)
 
     // Categories badges
     const categories = (insight.categories || []).slice(0, 2).map(c => {
-      const color = c === 'high-frustration' ? 'badge-error' : 'badge-ghost'
-      return `<span class="badge badge-xs ${color} text-[9px]">${esc(c.replace('-', ' '))}</span>`
+      const isError = c === 'high-frustration'
+      return `<span class="insight-badge ${isError ? 'insight-badge-error' : ''} px-1.5 py-0.5 rounded text-[9px]">${esc(c.replace(/-/g, ' '))}</span>`
     }).join('')
 
-    return `<div class="insight-item px-3 py-2.5 ${isActive ? 'active' : ''}" data-id="${insight.id}">
-      <div class="flex items-center gap-2 mb-1">
-        <span class="text-xs font-medium truncate">${esc(insight.userId)}</span>
-        <span class="text-[10px] opacity-40 truncate">${esc(repo)}</span>
+    return `<div class="insight-item px-3 py-3 ${isActive ? 'active' : ''}" data-id="${insight.id}">
+      <div class="flex items-center gap-2 mb-1.5">
+        <span class="insight-user text-xs truncate">${esc(insight.userId)}</span>
+        <span class="insight-meta text-[10px]">${time}</span>
       </div>
-      <div class="text-[10px] opacity-60 line-clamp-2 leading-snug mb-1">${esc(preview)}</div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-[10px] opacity-30">${time}</span>
-        <span class="text-[10px] opacity-30">·</span>
-        <span class="text-[10px] opacity-30">${sessions}s ${events}e</span>
+      <div class="insight-preview text-[11px] line-clamp-2 mb-2">${esc(preview)}</div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="insight-meta text-[10px]">${sessions} sessions · ${events} events</span>
         ${categories}
       </div>
     </div>`
@@ -1617,7 +1614,7 @@ function renderInsightDetail(id) {
   insightDetailUser.textContent = insight.userId
   insightDetailRepo.textContent = insight.repoName || 'All repositories'
 
-  // Meta info
+  // Meta info - build as spans for better visual grouping
   const time = new Date(insight.createdAt).toLocaleString()
   const sessions = insight.sessionsAnalyzed || 0
   const events = insight.eventsAnalyzed || 0
@@ -1628,11 +1625,15 @@ function renderInsightDetail(id) {
   const duration = meta.durationMs ? `${(meta.durationMs / 1000).toFixed(1)}s` : ''
   const model = meta.model || ''
 
-  const metaParts = [time, `${sessions} sessions`, `${events} events`]
-  if (model) metaParts.push(model)
-  if (duration) metaParts.push(duration)
-  if (tokens) metaParts.push(tokens)
-  insightDetailMeta.textContent = metaParts.join(' · ')
+  const metaParts = [
+    `<span>${esc(time)}</span>`,
+    `<span>${sessions} sessions</span>`,
+    `<span>${events} events</span>`
+  ]
+  if (model) metaParts.push(`<span class="font-medium">${esc(model)}</span>`)
+  if (duration) metaParts.push(`<span>${duration}</span>`)
+  if (tokens) metaParts.push(`<span>${tokens}</span>`)
+  insightDetailMeta.innerHTML = metaParts.join('<span class="opacity-30">·</span>')
 
   // Content
   insightDetailContent.innerHTML = markdownToHtml(insight.content || 'No content')

@@ -18,7 +18,7 @@
     .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
     .session-item:hover { background: oklch(94% 0 0); }
     .session-item.active { background: oklch(90% 0 0); }
-    .event-row { outline: none; transition: background 0.15s; position: absolute; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 36px; box-sizing: border-box; }
+    .event-row { outline: none; transition: background 0.15s; position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 36px; box-sizing: border-box; }
     .event-row:hover { background: oklch(96% 0 0); }
     .event-row.selected { background: oklch(92% 0 0); }
     .event-row .cell-time { flex-shrink: 0; padding: 8px 8px 8px 12px; }
@@ -69,24 +69,143 @@
 
     /* Insight list items */
     .insight-item {
-      cursor: pointer; outline: none; transition: background 0.15s;
-      border-bottom: 1px solid oklch(90% 0 0);
+      cursor: pointer; outline: none; transition: all 0.15s ease;
+      border-left: 3px solid transparent;
+      border-bottom: 1px solid oklch(95% 0 0);
     }
-    .insight-item:hover { background: oklch(96% 0 0); }
-    .insight-item.active { background: oklch(92% 0 0); }
+    .insight-item:hover { background: oklch(98% 0 0); }
+    .insight-item.active { 
+      background: oklch(98% 0.01 250 / 0.3); 
+      border-left-color: oklch(50% 0.15 250);
+    }
+    .insight-item .insight-user {
+      font-weight: 600;
+      color: oklch(20% 0 0);
+    }
+    .insight-item .insight-preview {
+      color: oklch(45% 0 0);
+      line-height: 1.5;
+    }
+    .insight-item .insight-meta {
+      color: oklch(55% 0 0);
+    }
+    .insight-item .insight-badge {
+      background: oklch(95% 0 0);
+      color: oklch(40% 0 0);
+      border: 1px solid oklch(90% 0 0);
+      font-weight: 500;
+    }
+    .insight-item .insight-badge-error {
+      background: oklch(95% 0.05 25);
+      color: oklch(45% 0.15 25);
+      border-color: oklch(90% 0.05 25);
+    }
 
-    /* Insight content styling */
-    .insight-content { line-height: 1.7; }
-    .insight-content h1 { font-size: 18px; font-weight: 700; margin-top: 24px; margin-bottom: 12px; }
-    .insight-content h2 { font-size: 15px; font-weight: 600; margin-top: 20px; margin-bottom: 10px; color: oklch(30% 0 0); }
-    .insight-content h3 { font-size: 13px; font-weight: 600; margin-top: 16px; margin-bottom: 8px; color: oklch(40% 0 0); }
-    .insight-content p { margin-bottom: 12px; }
-    .insight-content ul, .insight-content ol { margin-left: 20px; margin-bottom: 12px; }
-    .insight-content li { margin-bottom: 6px; }
-    .insight-content hr { margin: 16px 0; border-color: oklch(90% 0 0); }
-    .insight-content em { opacity: 0.6; font-size: 11px; }
-    .insight-content strong { font-weight: 600; }
-    .insight-content code { background: oklch(95% 0 0); padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+    /* Insight content styling - Vercel-inspired clean typography */
+    .insight-content { 
+      line-height: 1.75; 
+      color: oklch(25% 0 0);
+      font-size: 14px;
+    }
+    .insight-content h1 { 
+      font-size: 20px; 
+      font-weight: 600; 
+      margin-top: 32px; 
+      margin-bottom: 16px; 
+      color: oklch(15% 0 0);
+      letter-spacing: -0.02em;
+    }
+    .insight-content h2 { 
+      font-size: 16px; 
+      font-weight: 600; 
+      margin-top: 28px; 
+      margin-bottom: 12px; 
+      color: oklch(15% 0 0);
+      letter-spacing: -0.01em;
+      padding-bottom: 8px;
+      border-bottom: 1px solid oklch(92% 0 0);
+    }
+    .insight-content h3 { 
+      font-size: 14px; 
+      font-weight: 600; 
+      margin-top: 20px; 
+      margin-bottom: 8px; 
+      color: oklch(25% 0 0);
+    }
+    .insight-content p { 
+      margin-bottom: 16px; 
+      color: oklch(35% 0 0);
+    }
+    .insight-content ul, .insight-content ol { 
+      margin-left: 20px; 
+      margin-bottom: 16px;
+      color: oklch(35% 0 0);
+    }
+    .insight-content li { 
+      margin-bottom: 8px;
+      padding-left: 4px;
+    }
+    .insight-content li::marker {
+      color: oklch(60% 0 0);
+    }
+    .insight-content hr { 
+      margin: 24px 0; 
+      border: none;
+      height: 1px;
+      background: oklch(92% 0 0);
+    }
+    .insight-content em { 
+      color: oklch(50% 0 0);
+      font-size: 12px;
+      font-style: normal;
+    }
+    .insight-content strong { 
+      font-weight: 600;
+      color: oklch(20% 0 0);
+    }
+    .insight-content code { 
+      background: oklch(96% 0 0); 
+      padding: 2px 6px; 
+      border-radius: 4px; 
+      font-size: 13px;
+      color: oklch(35% 0 0);
+      border: 1px solid oklch(92% 0 0);
+    }
+    
+    /* First h2 in content shouldn't have top margin */
+    .insight-content > h2:first-child {
+      margin-top: 0;
+    }
+    
+    /* Nested lists */
+    .insight-content ul ul, .insight-content ol ol {
+      margin-top: 8px;
+      margin-bottom: 0;
+    }
+    
+    /* Better blockquote styling */
+    .insight-content blockquote {
+      border-left: 3px solid oklch(85% 0 0);
+      padding-left: 16px;
+      margin: 16px 0;
+      color: oklch(45% 0 0);
+      font-style: italic;
+    }
+    
+    /* Pre/code blocks */
+    .insight-content pre {
+      background: oklch(97% 0 0);
+      border: 1px solid oklch(92% 0 0);
+      border-radius: 6px;
+      padding: 12px 16px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+    .insight-content pre code {
+      background: none;
+      border: none;
+      padding: 0;
+    }
 
     /* Mobile responsive */
     @media (max-width: 767px) {
@@ -179,21 +298,21 @@
       </div>
       <!-- Cooking section -->
       <div id="section-cooking" class="bubble-section hidden">
-        <div class="flex items-center gap-2 mb-3">
+        <div class="flex items-center gap-2 mb-3 justify-center">
           <span class="css-spinner"></span>
           <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Cooking</span>
           <span id="cooking-count" class="badge badge-xs badge-ghost text-[9px]">0</span>
         </div>
-        <div id="cooking-container" class="bubble-category flex flex-wrap gap-4"></div>
+        <div id="cooking-container" class="bubble-category flex flex-wrap gap-4 justify-center"></div>
       </div>
       <!-- Waiting section -->
       <div id="section-waiting" class="bubble-section hidden">
-        <div class="flex items-center gap-2 mb-3">
+        <div class="flex items-center gap-2 mb-3 justify-center">
           <span class="text-[10px] opacity-30">&#9679;</span>
           <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Waiting for response</span>
           <span id="waiting-count" class="badge badge-xs badge-ghost text-[9px]">0</span>
         </div>
-        <div id="waiting-container" class="bubble-category flex flex-wrap gap-4"></div>
+        <div id="waiting-container" class="bubble-category flex flex-wrap gap-4 justify-center"></div>
       </div>
     </div>
   </div>
@@ -293,21 +412,19 @@
         </div>
       </div>
       <div id="insights-detail" class="flex-1 overflow-y-auto hidden">
-        <div class="px-4 sm:px-6 py-4 border-b border-base-200 bg-base-100 sticky top-0">
-          <div class="flex items-start justify-between gap-2">
+        <div class="px-5 sm:px-8 py-5 border-b border-base-200 bg-base-100 sticky top-0 z-10">
+          <div class="flex items-start justify-between gap-3">
             <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 flex-wrap">
-                <span id="insight-detail-user" class="text-sm font-semibold"></span>
-                <span id="insight-detail-repo" class="text-xs opacity-40"></span>
-              </div>
-              <div id="insight-detail-meta" class="text-[10px] opacity-40 mt-1"></div>
+              <h1 id="insight-detail-user" class="text-base font-semibold tracking-tight text-base-content mb-0.5"></h1>
+              <p id="insight-detail-repo" class="text-xs text-base-content/50 mb-2"></p>
+              <div id="insight-detail-meta" class="text-[10px] text-base-content/40 flex flex-wrap gap-x-2 gap-y-1"></div>
             </div>
-            <button id="insight-detail-delete" class="btn btn-xs btn-ghost opacity-40 hover:opacity-100" title="Delete insight">
+            <button id="insight-detail-delete" class="btn btn-xs btn-ghost opacity-30 hover:opacity-100 hover:text-error" title="Delete insight">
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
             </button>
           </div>
         </div>
-        <div id="insight-detail-content" class="px-4 sm:px-6 py-4 insight-content text-sm"></div>
+        <div id="insight-detail-content" class="px-5 sm:px-8 py-6 insight-content"></div>
       </div>
     </div>
   </div> <!-- /insights-view -->
