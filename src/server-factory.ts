@@ -1,5 +1,6 @@
 import { Server as Engine } from '@socket.io/bun-engine'
 import { Server as SocketIOServer } from 'socket.io'
+import { EventEmitter } from 'events'
 import { initDb, listSessions, getSessionEventCount } from './db'
 import { createRouter } from './routes'
 import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
@@ -97,15 +98,11 @@ export function createServer(options: ServerOptions = {}) {
     })
   })
 
+  // Internal event bus for cross-component communication
+  const internalBus = new EventEmitter()
+
   // Insight analysis scheduler
   let insightScheduler: InsightScheduler | null = null
-  if (insightsEnabled) {
-    insightScheduler = createInsightScheduler({
-      io,
-      dbPath: resolvedDbPath,
-      runOnStart: insightsRunOnStart,
-    })
-  }
 
   // Slack bot integration
   let slackBot: SlackBot | null = null
@@ -129,7 +126,7 @@ export function createServer(options: ServerOptions = {}) {
     if (slackBot) {
       try { await slackBot.stop() } catch {}
     }
-    slackBot = createSlackBot({ ...config, io })
+    slackBot = createSlackBot({ ...config, io, internalBus })
     try {
       await slackBot.start()
     } catch (err) {
@@ -156,7 +153,18 @@ export function createServer(options: ServerOptions = {}) {
     restart: restartSlackBot,
   }
 
-  const router = createRouter(io, slackBotRef)
+  const router = createRouter(io, slackBotRef, internalBus)
+
+  // Create insight scheduler after slackBotRef is set up
+  if (insightsEnabled) {
+    insightScheduler = createInsightScheduler({
+      io,
+      dbPath: resolvedDbPath,
+      runOnStart: insightsRunOnStart,
+      slackBot: slackBotRef,
+      internalBus,
+    })
+  }
 
   function serveHtml(filePath: string) {
     const file = Bun.file(filePath)

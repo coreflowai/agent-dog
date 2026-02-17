@@ -72,6 +72,9 @@ export type InsightMeta = {
   durationMs?: number
   error?: string
   rawOutput?: string
+  phase?: 'preliminary' | 'refined' | 'final-no-answers' | 'refined-late'
+  questionCount?: number
+  answersReceived?: number
 }
 
 export type Insight = {

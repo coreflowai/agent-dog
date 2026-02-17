@@ -132,6 +132,15 @@ export function updateQuestionAnswer(id: string, data: {
     .run()
 }
 
+export function getQuestionsByInsightId(insightId: string): SlackQuestion[] {
+  const db = getDb()
+  const rows = db.select().from(slackQuestions)
+    .where(eq(slackQuestions.insightId, insightId))
+    .orderBy(desc(slackQuestions.createdAt))
+    .all()
+  return rows.map(rowToQuestion)
+}
+
 export function findQuestionByThread(channelId: string, messageTs: string): SlackQuestion | null {
   const db = getDb()
   const row = db.select().from(slackQuestions)

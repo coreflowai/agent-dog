@@ -1832,6 +1832,19 @@ socket.on('insight:deleted', (id) => {
   }
 })
 
+socket.on('insight:updated', (updatedInsight) => {
+  if (!updatedInsight) return
+  const idx = insights.findIndex(i => i.id === updatedInsight.id)
+  if (idx >= 0) {
+    insights[idx] = updatedInsight
+  } else {
+    insights.unshift(updatedInsight)
+  }
+  if (currentView === 'insights') {
+    renderInsights()
+  }
+})
+
 // --- Integrations: Slack config ---
 const slackBotTokenInput = document.getElementById('slack-bot-token')
 const slackAppTokenInput = document.getElementById('slack-app-token')

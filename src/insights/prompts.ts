@@ -152,6 +152,16 @@ export function analysisToMarkdown(analysis: AnalysisOutput): string {
     lines.push('')
   }
 
+  // Questions for Team
+  if (analysis.questions?.length) {
+    lines.push(`## Questions for Team\n`)
+    for (const q of analysis.questions) {
+      const target = q.targetUser ? ` *(for @${q.targetUser})*` : ''
+      lines.push(`- ${q.text}${target}`)
+    }
+    lines.push('')
+  }
+
   // Stats
   if (analysis.stats) {
     lines.push(`---`)
@@ -181,6 +191,12 @@ export type AnalysisOutput = {
     action: string
     priority: 'low' | 'medium' | 'high'
     category: 'tooling' | 'workflow' | 'knowledge' | 'other'
+  }>
+  questions?: Array<{
+    text: string
+    reason: string
+    targetUser?: string
+    options?: Array<{ id: string; label: string }>
   }>
   stats?: {
     sessionsAnalyzed: number

@@ -118,6 +118,24 @@ export function listInsights(options?: {
   }))
 }
 
+export function updateInsight(id: string, updates: {
+  content?: string
+  categories?: string[]
+  followUpActions?: FollowUpAction[]
+  meta?: InsightMeta
+}) {
+  const db = getDb()
+  const sets: Record<string, unknown> = {}
+  if (updates.content !== undefined) sets.content = updates.content
+  if (updates.categories !== undefined) sets.categories = updates.categories
+  if (updates.followUpActions !== undefined) sets.followUpActions = updates.followUpActions
+  if (updates.meta !== undefined) sets.meta = updates.meta
+
+  if (Object.keys(sets).length === 0) return
+
+  db.update(insights).set(sets).where(eq(insights.id, id)).run()
+}
+
 export function deleteInsight(id: string) {
   const db = getDb()
   db.delete(insights).where(eq(insights.id, id)).run()

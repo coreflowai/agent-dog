@@ -7,6 +7,7 @@ import { addEvent, getSession, getSessionEvents, getSessionEventsPaginated, list
 import { listInsights, getInsight, deleteInsight } from './db/insights'
 import { addQuestion, getQuestion, listQuestions, updateQuestionAnswer, getIntegrationConfig, setIntegrationConfig } from './db/slack'
 import { createAuth, migrateAuth } from './auth'
+import type { EventEmitter } from 'events'
 import type { IngestPayload, CreateSlackQuestionInput } from './types'
 import type { SlackBot } from './slack'
 
@@ -44,7 +45,7 @@ function json(data: unknown, status = 200) {
   })
 }
 
-export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }) {
+export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }, internalBus?: EventEmitter) {
   return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
@@ -513,7 +514,10 @@ export const AgentFlowPlugin = async () => {
           selectedOption: body.selectedOption,
         })
         const updated = getQuestion(id)
-        if (updated) io.emit('slack:question:answered', updated)
+        if (updated) {
+          io.emit('slack:question:answered', updated)
+          if (internalBus) internalBus.emit('question:answered', updated)
+        }
         return json(updated)
       } catch (err: any) {
         return json({ error: err.message ?? 'Failed to answer question' }, 500)

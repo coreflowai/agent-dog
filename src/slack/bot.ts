@@ -1,4 +1,5 @@
 import { App } from '@slack/bolt'
+import type { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
 import { getQuestion, updateQuestionPosted, updateQuestionAnswer, findQuestionByThread } from '../db/slack'
 import type { SlackQuestion, SlackQuestionOption } from '../types'
@@ -8,6 +9,7 @@ export type SlackBotOptions = {
   appToken: string
   channel: string
   io?: SocketIOServer
+  internalBus?: EventEmitter
 }
 
 export type SlackBot = {
@@ -32,7 +34,7 @@ async function validateSlackToken(botToken: string): Promise<{ ok: boolean; erro
 }
 
 export function createSlackBot(options: SlackBotOptions): SlackBot {
-  const { botToken, appToken, channel, io } = options
+  const { botToken, appToken, channel, io, internalBus } = options
   let connected = false
   let app: App | null = null
 
@@ -74,6 +76,9 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       const updated = getQuestion(question.id)
       if (updated && io) {
         io.emit('slack:question:answered', updated)
+      }
+      if (updated && internalBus) {
+        internalBus.emit('question:answered', updated)
       }
     })
 
@@ -131,6 +136,9 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       const updated = getQuestion(questionId)
       if (updated && io) {
         io.emit('slack:question:answered', updated)
+      }
+      if (updated && internalBus) {
+        internalBus.emit('question:answered', updated)
       }
     })
   }

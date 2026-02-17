@@ -3,6 +3,13 @@ import { Database } from 'bun:sqlite'
 import { analysisToMarkdown, type AnalysisOutput } from './prompts'
 import type { InsightMeta, FollowUpAction } from '../types'
 
+export type AnalysisQuestion = {
+  text: string
+  reason: string
+  targetUser?: string
+  options?: Array<{ id: string; label: string }>
+}
+
 export type AnalysisResult = {
   success: boolean
   content: string  // Markdown content
@@ -11,6 +18,7 @@ export type AnalysisResult = {
   sessionsAnalyzed: number
   eventsAnalyzed: number
   meta: InsightMeta
+  questions?: AnalysisQuestion[]
   error?: string
 }
 
@@ -196,9 +204,43 @@ ORDER BY timestamp DESC;
 }
 
 /**
+ * Build team context from session metadata for the analysis prompt.
+ */
+export function buildTeamContext(dbPath: string): string {
+  const db = new Database(dbPath, { readonly: true })
+  try {
+    const rows = db.prepare(`
+      SELECT DISTINCT user_id,
+        json_extract(metadata, '$.user.name') as name,
+        json_extract(metadata, '$.user.githubUsername') as github,
+        json_extract(metadata, '$.git.repoName') as repo,
+        COUNT(*) as session_count
+      FROM sessions
+      WHERE user_id IS NOT NULL
+      GROUP BY user_id
+      ORDER BY MAX(last_event_time) DESC
+      LIMIT 20
+    `).all() as Array<{ user_id: string; name: string | null; github: string | null; repo: string | null; session_count: number }>
+
+    if (rows.length === 0) return ''
+
+    const lines = ['## Team Context', 'These team members have been identified from session data:']
+    for (const r of rows) {
+      const displayName = r.name ? ` (${r.name})` : ''
+      const repo = r.repo ? ` — works on ${r.repo}` : ''
+      lines.push(`- ${r.user_id}${displayName}${repo} — ${r.session_count} sessions`)
+    }
+    lines.push('You can target questions to specific people by username.')
+    return lines.join('\n')
+  } finally {
+    db.close()
+  }
+}
+
+/**
  * Build the analysis prompt
  */
-function buildAnalysisPrompt(userId: string, _repoName: string | null, sinceTimestamp: number): string {
+function buildAnalysisPrompt(userId: string, _repoName: string | null, sinceTimestamp: number, teamContext?: string): string {
   return `You are analyzing AI agent session data for user "${userId}" across all their recent sessions to generate actionable insights.
 
 ## Your Task
@@ -234,6 +276,19 @@ First, use the \`schema\` tool to understand the database structure, then perfor
    - Based on observed patterns and struggles
    - Practical, actionable recommendations
 
+6. **Questions for Humans** (Optional): If you encounter genuinely unclear patterns,
+   you may ask questions to the team. Be human — write like a curious colleague,
+   not a report generator. Only ask when:
+   - You see ambiguous patterns that could be read multiple ways
+   - You need domain context ("is this endpoint supposed to be slow?")
+   - Cross-user patterns need team confirmation
+   - A frustration point might have a known workaround
+
+   Do NOT ask for every insight. Most runs should have zero questions.
+   If asking, keep it to 1-3 focused questions.
+
+${teamContext || ''}
+
 ## Output Format
 
 Generate your response as valid JSON with this exact structure:
@@ -265,6 +320,14 @@ Generate your response as valid JSON with this exact structure:
       "category": "tooling|workflow|knowledge|other"
     }
   ],
+  "questions": [
+    {
+      "text": "Hey — I noticed X happened 4 times. Is there a known issue, or is this expected?",
+      "reason": "Unclear if this is a real problem or intentional",
+      "targetUser": "username_or_null",
+      "options": [{"id": "known", "label": "Known issue"}, {"id": "expected", "label": "Expected"}]
+    }
+  ],
   "stats": {
     "sessionsAnalyzed": 0,
     "eventsAnalyzed": 0,
@@ -287,7 +350,8 @@ export async function runAnalysis(
   dbPath: string
 ): Promise<AnalysisResult> {
   const startTime = Date.now()
-  const prompt = buildAnalysisPrompt(userId, repoName, sinceTimestamp)
+  const teamContext = buildTeamContext(dbPath)
+  const prompt = buildAnalysisPrompt(userId, repoName, sinceTimestamp, teamContext)
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -365,6 +429,7 @@ export async function runAnalysis(
             followUpActions,
             sessionsAnalyzed: analysis.stats?.sessionsAnalyzed ?? 0,
             eventsAnalyzed: analysis.stats?.eventsAnalyzed ?? 0,
+            questions: analysis.questions?.length ? analysis.questions : undefined,
             meta: {
               durationMs: Date.now() - startTime,
               model,
@@ -464,6 +529,151 @@ export async function runAnalysis(
         durationMs: Date.now() - startTime,
         error: error instanceof Error ? error.message : String(error),
       },
+      error: error instanceof Error ? error.message : String(error),
+    }
+  }
+}
+
+/**
+ * Run a refinement pass — takes the original insight + answers and produces a refined analysis.
+ */
+export async function runRefinement(opts: {
+  userId: string
+  originalContent: string
+  answers: Array<{ question: string; answer: string; answeredBy: string }>
+  dbPath: string
+}): Promise<AnalysisResult> {
+  const startTime = Date.now()
+  const { userId, originalContent, answers, dbPath } = opts
+
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) {
+    return {
+      success: false, content: '', categories: [], followUpActions: [],
+      sessionsAnalyzed: 0, eventsAnalyzed: 0,
+      meta: { durationMs: Date.now() - startTime, error: 'ANTHROPIC_API_KEY not set' },
+      error: 'ANTHROPIC_API_KEY not set',
+    }
+  }
+
+  const teamContext = buildTeamContext(dbPath)
+  const answersText = answers
+    .map(a => `Q: ${a.question}\nA: ${a.answer} (from ${a.answeredBy})`)
+    .join('\n\n')
+
+  const prompt = `You previously analyzed sessions for user "${userId}" and asked some questions.
+Here are the answers from the team:
+
+${answersText}
+
+## Original Insight
+${originalContent}
+
+${teamContext}
+
+Refine your analysis with this new context. Use the sql tool if needed to verify anything.
+Output the same JSON format as before. You may include new follow-up questions if the
+answers raised further things worth clarifying (but don't force it — most refinements need zero follow-ups).
+
+Be specific, actionable, and integrate the human answers into a better analysis.`
+
+  const client = new Anthropic({ apiKey })
+  const model = 'claude-sonnet-4-20250514'
+
+  try {
+    let messages: Anthropic.MessageParam[] = [
+      { role: 'user', content: prompt },
+    ]
+
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+
+    const maxIterations = 10
+    for (let i = 0; i < maxIterations; i++) {
+      const response = await client.messages.create({
+        model, max_tokens: 4096, tools, messages,
+      })
+
+      totalInputTokens += response.usage.input_tokens
+      totalOutputTokens += response.usage.output_tokens
+
+      if (response.stop_reason === 'end_turn') {
+        const textContent = response.content.find(c => c.type === 'text')
+        const content = textContent?.type === 'text' ? textContent.text : ''
+        const analysis = extractAnalysis(content)
+
+        if (analysis) {
+          const mdContent = analysisToMarkdown(analysis)
+          const followUpActions: FollowUpAction[] = (analysis.followUpActions ?? []).map(a => ({
+            action: a.action, priority: a.priority, category: a.category,
+          }))
+          const categories: string[] = []
+          if (analysis.frustrationPoints?.some(fp => fp.severity === 'high')) categories.push('high-frustration')
+          if (analysis.improvements?.length) categories.push('has-improvements')
+          if (analysis.userIntent?.goals?.length) categories.push('goals-identified')
+
+          return {
+            success: true, content: mdContent, categories, followUpActions,
+            sessionsAnalyzed: analysis.stats?.sessionsAnalyzed ?? 0,
+            eventsAnalyzed: analysis.stats?.eventsAnalyzed ?? 0,
+            questions: analysis.questions?.length ? analysis.questions : undefined,
+            meta: {
+              durationMs: Date.now() - startTime, model,
+              tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+            },
+          }
+        }
+
+        return {
+          success: true, content: content || 'No analysis generated',
+          categories: [], followUpActions: [], sessionsAnalyzed: 0, eventsAnalyzed: 0,
+          meta: {
+            durationMs: Date.now() - startTime, model,
+            tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+          },
+        }
+      }
+
+      if (response.stop_reason === 'tool_use') {
+        const toolUseBlocks = response.content.filter(c => c.type === 'tool_use')
+        messages.push({ role: 'assistant', content: response.content })
+
+        const toolResults: Anthropic.ToolResultBlockParam[] = []
+        for (const block of toolUseBlocks) {
+          if (block.type !== 'tool_use') continue
+          let result: string
+          try {
+            if (block.name === 'sql') {
+              result = executeSqlTool((block.input as { query: string }).query, dbPath)
+            } else if (block.name === 'schema') {
+              result = executeSchemaTools()
+            } else {
+              result = `Unknown tool: ${block.name}`
+            }
+          } catch (err) {
+            result = `Error: ${err instanceof Error ? err.message : String(err)}`
+          }
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
+        }
+        messages.push({ role: 'user', content: toolResults })
+      }
+    }
+
+    return {
+      success: false, content: '', categories: [], followUpActions: [],
+      sessionsAnalyzed: 0, eventsAnalyzed: 0,
+      meta: {
+        durationMs: Date.now() - startTime, model,
+        tokenUsage: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
+        error: 'Max iterations reached',
+      },
+      error: 'Max iterations reached',
+    }
+  } catch (error) {
+    return {
+      success: false, content: '', categories: [], followUpActions: [],
+      sessionsAnalyzed: 0, eventsAnalyzed: 0,
+      meta: { durationMs: Date.now() - startTime, error: error instanceof Error ? error.message : String(error) },
       error: error instanceof Error ? error.message : String(error),
     }
   }
