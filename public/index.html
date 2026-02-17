@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="wireframe">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,33 +16,33 @@
     }
     body { min-height: 100vh; font-family: 'Geist Mono', monospace; }
     .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
-    .session-item:hover { background: oklch(94% 0 0); }
-    .session-item.active { background: oklch(90% 0 0); }
+    .session-item:hover { background: color-mix(in oklch, var(--color-base-content) 8%, transparent); }
+    .session-item.active { background: color-mix(in oklch, var(--color-base-content) 12%, transparent); }
     .event-row { outline: none; transition: background 0.15s; position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 36px; box-sizing: border-box; }
-    .event-row:hover { background: oklch(96% 0 0); }
-    .event-row.selected { background: oklch(92% 0 0); }
+    .event-row:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
+    .event-row.selected { background: color-mix(in oklch, var(--color-base-content) 10%, transparent); }
     .event-row .cell-time { flex-shrink: 0; padding: 8px 8px 8px 12px; }
     .event-row .cell-content { flex: 1; min-width: 0; padding: 8px 12px 8px 0; overflow: hidden; }
     .event-row .cell-content > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .event-detail { max-height: 200px; overflow-y: auto; }
     #session-list:focus, #event-panel:focus { outline: none; }
     .resize-handle-x { width: 4px; cursor: col-resize; transition: background 0.15s; flex-shrink: 0; }
-    .resize-handle-x:hover, .resize-handle-x.active { background: oklch(70% 0.1 250); }
+    .resize-handle-x:hover, .resize-handle-x.active { background: color-mix(in oklch, var(--color-primary) 50%, transparent); }
     .resize-handle-y { height: 4px; cursor: row-resize; transition: background 0.15s; flex-shrink: 0; }
-    .resize-handle-y:hover, .resize-handle-y.active { background: oklch(70% 0.1 250); }
+    .resize-handle-y:hover, .resize-handle-y.active { background: color-mix(in oklch, var(--color-primary) 50%, transparent); }
     @keyframes spin { to { transform: rotate(360deg); } }
     .css-spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; opacity: 0.6; }
 
     /* Bubble view */
     .agent-bubble {
-      width: 220px; border-radius: 12px; border: 1px solid oklch(85% 0 0);
+      width: 220px; border-radius: 12px; border: 1px solid var(--color-base-300);
       padding: 12px; cursor: pointer;
       transition: transform 0.2s, box-shadow 0.2s, opacity 0.4s;
       opacity: 0; transform: scale(0.85);
     }
     .agent-bubble.visible { opacity: 1; transform: scale(1); }
     .agent-bubble.exiting { opacity: 0; transform: scale(0.85); pointer-events: none; }
-    .agent-bubble:hover { transform: scale(1.04); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.1); }
+    .agent-bubble:hover { transform: scale(1.04); box-shadow: 0 4px 16px oklch(0% 0 0 / 0.3); }
     /* Cooking bubbles float actively */
     .agent-bubble.cooking { animation: bubble-float 3s ease-in-out infinite; }
     .agent-bubble.cooking.visible { animation: bubble-float 3s ease-in-out infinite; }
@@ -53,9 +53,9 @@
       50% { translate: 0 -4px; }
     }
     @keyframes bubble-pulse {
-      0% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0.4); }
-      70% { box-shadow: 0 0 0 8px oklch(70% 0.1 250 / 0); }
-      100% { box-shadow: 0 0 0 0 oklch(70% 0.1 250 / 0); }
+      0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 40%, transparent); }
+      70% { box-shadow: 0 0 0 8px color-mix(in oklch, var(--color-primary) 0%, transparent); }
+      100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--color-primary) 0%, transparent); }
     }
     .agent-bubble.pulse { animation: bubble-pulse 0.6s ease-out, bubble-float 3s ease-in-out infinite; }
     .bubble-section-empty { display: none; }
@@ -71,141 +71,77 @@
     .insight-item {
       cursor: pointer; outline: none; transition: all 0.15s ease;
       border-left: 3px solid transparent;
-      border-bottom: 1px solid oklch(95% 0 0);
+      border-bottom: 1px solid var(--color-base-300);
     }
-    .insight-item:hover { background: oklch(98% 0 0); }
-    .insight-item.active { 
-      background: oklch(98% 0.01 250 / 0.3); 
-      border-left-color: oklch(50% 0.15 250);
+    .insight-item:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
+    .insight-item.active {
+      background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+      border-left-color: var(--color-primary);
     }
     .insight-item .insight-user {
       font-weight: 600;
-      color: oklch(20% 0 0);
+      color: var(--color-base-content);
     }
     .insight-item .insight-preview {
-      color: oklch(45% 0 0);
+      color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
       line-height: 1.5;
     }
     .insight-item .insight-meta {
-      color: oklch(55% 0 0);
+      color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
     }
     .insight-item .insight-badge {
-      background: oklch(95% 0 0);
-      color: oklch(40% 0 0);
-      border: 1px solid oklch(90% 0 0);
+      background: var(--color-base-300);
+      color: color-mix(in oklch, var(--color-base-content) 70%, transparent);
+      border: 1px solid var(--color-base-300);
       font-weight: 500;
     }
     .insight-item .insight-badge-error {
-      background: oklch(95% 0.05 25);
-      color: oklch(45% 0.15 25);
-      border-color: oklch(90% 0.05 25);
+      background: color-mix(in oklch, var(--color-error) 15%, transparent);
+      color: var(--color-error);
+      border-color: color-mix(in oklch, var(--color-error) 30%, transparent);
     }
 
-    /* Insight content styling - Vercel-inspired clean typography */
-    .insight-content { 
-      line-height: 1.75; 
-      color: oklch(25% 0 0);
+    /* Insight content styling */
+    .insight-content {
+      line-height: 1.75;
+      color: color-mix(in oklch, var(--color-base-content) 85%, transparent);
       font-size: 14px;
     }
-    .insight-content h1 { 
-      font-size: 20px; 
-      font-weight: 600; 
-      margin-top: 32px; 
-      margin-bottom: 16px; 
-      color: oklch(15% 0 0);
-      letter-spacing: -0.02em;
+    .insight-content h1 {
+      font-size: 20px; font-weight: 600; margin-top: 32px; margin-bottom: 16px;
+      color: var(--color-base-content); letter-spacing: -0.02em;
     }
-    .insight-content h2 { 
-      font-size: 16px; 
-      font-weight: 600; 
-      margin-top: 28px; 
-      margin-bottom: 12px; 
-      color: oklch(15% 0 0);
-      letter-spacing: -0.01em;
-      padding-bottom: 8px;
-      border-bottom: 1px solid oklch(92% 0 0);
+    .insight-content h2 {
+      font-size: 16px; font-weight: 600; margin-top: 28px; margin-bottom: 12px;
+      color: var(--color-base-content); letter-spacing: -0.01em;
+      padding-bottom: 8px; border-bottom: 1px solid var(--color-base-300);
     }
-    .insight-content h3 { 
-      font-size: 14px; 
-      font-weight: 600; 
-      margin-top: 20px; 
-      margin-bottom: 8px; 
-      color: oklch(25% 0 0);
+    .insight-content h3 {
+      font-size: 14px; font-weight: 600; margin-top: 20px; margin-bottom: 8px;
+      color: color-mix(in oklch, var(--color-base-content) 90%, transparent);
     }
-    .insight-content p { 
-      margin-bottom: 16px; 
-      color: oklch(35% 0 0);
+    .insight-content p { margin-bottom: 16px; }
+    .insight-content ul, .insight-content ol { margin-left: 20px; margin-bottom: 16px; }
+    .insight-content li { margin-bottom: 8px; padding-left: 4px; }
+    .insight-content li::marker { color: color-mix(in oklch, var(--color-base-content) 40%, transparent); }
+    .insight-content hr { margin: 24px 0; border: none; height: 1px; background: var(--color-base-300); }
+    .insight-content em { color: color-mix(in oklch, var(--color-base-content) 50%, transparent); font-size: 12px; font-style: normal; }
+    .insight-content strong { font-weight: 600; color: var(--color-base-content); }
+    .insight-content code {
+      background: var(--color-base-300); padding: 2px 6px; border-radius: 4px;
+      font-size: 13px; border: 1px solid var(--color-base-300);
     }
-    .insight-content ul, .insight-content ol { 
-      margin-left: 20px; 
-      margin-bottom: 16px;
-      color: oklch(35% 0 0);
-    }
-    .insight-content li { 
-      margin-bottom: 8px;
-      padding-left: 4px;
-    }
-    .insight-content li::marker {
-      color: oklch(60% 0 0);
-    }
-    .insight-content hr { 
-      margin: 24px 0; 
-      border: none;
-      height: 1px;
-      background: oklch(92% 0 0);
-    }
-    .insight-content em { 
-      color: oklch(50% 0 0);
-      font-size: 12px;
-      font-style: normal;
-    }
-    .insight-content strong { 
-      font-weight: 600;
-      color: oklch(20% 0 0);
-    }
-    .insight-content code { 
-      background: oklch(96% 0 0); 
-      padding: 2px 6px; 
-      border-radius: 4px; 
-      font-size: 13px;
-      color: oklch(35% 0 0);
-      border: 1px solid oklch(92% 0 0);
-    }
-    
-    /* First h2 in content shouldn't have top margin */
-    .insight-content > h2:first-child {
-      margin-top: 0;
-    }
-    
-    /* Nested lists */
-    .insight-content ul ul, .insight-content ol ol {
-      margin-top: 8px;
-      margin-bottom: 0;
-    }
-    
-    /* Better blockquote styling */
+    .insight-content > h2:first-child { margin-top: 0; }
+    .insight-content ul ul, .insight-content ol ol { margin-top: 8px; margin-bottom: 0; }
     .insight-content blockquote {
-      border-left: 3px solid oklch(85% 0 0);
-      padding-left: 16px;
-      margin: 16px 0;
-      color: oklch(45% 0 0);
-      font-style: italic;
+      border-left: 3px solid var(--color-base-300); padding-left: 16px;
+      margin: 16px 0; color: color-mix(in oklch, var(--color-base-content) 60%, transparent); font-style: italic;
     }
-    
-    /* Pre/code blocks */
     .insight-content pre {
-      background: oklch(97% 0 0);
-      border: 1px solid oklch(92% 0 0);
-      border-radius: 6px;
-      padding: 12px 16px;
-      overflow-x: auto;
-      margin: 16px 0;
+      background: var(--color-base-200); border: 1px solid var(--color-base-300);
+      border-radius: 6px; padding: 12px 16px; overflow-x: auto; margin: 16px 0;
     }
-    .insight-content pre code {
-      background: none;
-      border: none;
-      padding: 0;
-    }
+    .insight-content pre code { background: none; border: none; padding: 0; }
 
     /* Mobile responsive */
     @media (max-width: 767px) {
@@ -225,7 +161,7 @@
       /* Bubbles: full-width stacked */
       .agent-bubble { width: 100% !important; padding: 12px; }
       .cooking-container, .waiting-container { flex-direction: column; }
-      #bubble-scroll { padding: 12px; }
+      #bubble-inner { padding: 12px; }
 
       /* Session list: larger tap targets */
       .session-item { padding: 12px; }
@@ -253,7 +189,7 @@
 <body class="bg-base-100 text-base-content">
 
   <!-- Navbar -->
-  <div class="navbar bg-base-300 shadow-sm px-4 min-h-10 h-10">
+  <div class="navbar bg-base-200 px-4 min-h-10 h-10 border-b border-base-300">
     <div class="flex-1 min-w-0">
       <span id="btn-title" class="text-sm font-bold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Back to overview (v)">AgentFlow</span>
       <span class="badge badge-ghost ml-2 text-[10px]">observability</span>
@@ -295,7 +231,8 @@
         </select>
       </div>
     </div>
-    <div id="bubble-scroll" class="flex-1 overflow-y-auto p-6 space-y-6 max-w-4xl mx-auto w-full">
+    <div id="bubble-scroll" class="flex-1 overflow-y-auto">
+      <div id="bubble-inner" class="max-w-4xl mx-auto w-full p-6 space-y-6">
       <div id="bubble-empty" class="flex items-center justify-center h-full">
         <div class="text-center opacity-40">
           <p class="text-sm mb-1">No active sessions</p>
@@ -321,6 +258,7 @@
         </div>
         <div id="waiting-container" class="bubble-category flex flex-wrap gap-4"></div>
       </div>
+      </div> <!-- /bubble-inner -->
     </div>
   </div>
 

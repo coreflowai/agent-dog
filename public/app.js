@@ -1232,7 +1232,7 @@ function renderBubbles() {
   const activeIds = new Set(active.map(s => s.id))
 
   // Exit bubbles for sessions no longer active
-  document.querySelectorAll('#bubble-scroll .agent-bubble').forEach(el => {
+  document.querySelectorAll('#bubble-inner .agent-bubble').forEach(el => {
     if (!activeIds.has(el.dataset.sid)) {
       el.classList.add('exiting')
       el.addEventListener('transitionend', () => el.remove(), { once: true })
@@ -1244,11 +1244,11 @@ function renderBubbles() {
   const activeRepoKeys = new Set(groups.map(([key]) => key === null ? '__other__' : key))
 
   // Remove stale repo groups
-  document.querySelectorAll('#bubble-scroll .repo-group').forEach(el => {
+  document.querySelectorAll('#bubble-inner .repo-group').forEach(el => {
     if (!activeRepoKeys.has(el.dataset.repo)) el.remove()
   })
 
-  const bubbleScroll = document.getElementById('bubble-scroll')
+  const bubbleScroll = document.getElementById('bubble-inner')
 
   for (const [repoKey, repoSessions] of groups) {
     const dataKey = repoKey === null ? '__other__' : repoKey
