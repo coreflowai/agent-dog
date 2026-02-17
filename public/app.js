@@ -1261,22 +1261,22 @@ function renderBubbles() {
       groupEl.className = 'repo-group'
       groupEl.dataset.repo = dataKey
       groupEl.innerHTML = `
-        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3 text-center bg-base-100 py-1">${esc(displayName)}</div>
+        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3 bg-base-100 py-1">${esc(displayName)}</div>
         <div class="bubble-subsection cooking mb-4">
-          <div class="flex items-center gap-2 mb-2 justify-center">
+          <div class="flex items-center gap-2 mb-2">
             <span class="css-spinner"></span>
             <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Cooking</span>
             <span class="repo-cooking-count badge badge-xs badge-ghost text-[9px]">0</span>
           </div>
-          <div class="cooking-container bubble-category flex flex-wrap gap-4 justify-center"></div>
+          <div class="cooking-container bubble-category flex flex-wrap gap-4"></div>
         </div>
         <div class="bubble-subsection waiting">
-          <div class="flex items-center gap-2 mb-2 justify-center">
+          <div class="flex items-center gap-2 mb-2">
             <span class="text-[10px] opacity-30">&#9679;</span>
             <span class="text-[10px] font-semibold uppercase tracking-wider opacity-50">Waiting for response</span>
             <span class="repo-waiting-count badge badge-xs badge-ghost text-[9px]">0</span>
           </div>
-          <div class="waiting-container bubble-category flex flex-wrap gap-4 justify-center"></div>
+          <div class="waiting-container bubble-category flex flex-wrap gap-4"></div>
         </div>
       `
       // Insert before #bubble-empty (keep empty state at top) or append
