@@ -28,6 +28,13 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     socketMode: true,
   })
 
+  // Catch async errors from Socket Mode / Web API to prevent process crash
+  app.error(async (error) => {
+    console.error('[SlackBot] Error:', error.message || error)
+    connected = false
+    if (io) io.emit('slack:status', { connected: false })
+  })
+
   // Thread reply listener — matches replies to question threads
   app.message(async ({ message, client }) => {
     // Only handle threaded replies (messages with thread_ts)
