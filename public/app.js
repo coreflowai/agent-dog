@@ -1147,11 +1147,29 @@ function mobileBack() {
   focusArea = 'sessions'
 }
 
+// --- Insights mobile ---
+const insightsSidebar = document.getElementById('insights-sidebar')
+const insightsMain = document.getElementById('insights-main')
+
+function insightsMobileShowDetail() {
+  if (!isMobile()) return
+  insightsSidebar.classList.add('mobile-hidden')
+  insightsMain.classList.remove('mobile-hidden')
+}
+
+function insightsMobileBack() {
+  if (!isMobile()) return
+  insightsMain.classList.add('mobile-hidden')
+  insightsSidebar.classList.remove('mobile-hidden')
+}
+
 // On resize, remove mobile classes if switching to desktop
 window.addEventListener('resize', () => {
   if (!isMobile()) {
     sidebar.classList.remove('mobile-hidden')
     mainPanel.classList.remove('mobile-hidden')
+    insightsSidebar.classList.remove('mobile-hidden')
+    insightsMain.classList.remove('mobile-hidden')
   }
 })
 
@@ -1243,7 +1261,7 @@ function renderBubbles() {
       groupEl.className = 'repo-group'
       groupEl.dataset.repo = dataKey
       groupEl.innerHTML = `
-        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3 text-center">${esc(displayName)}</div>
+        <div class="repo-header text-[10px] font-semibold uppercase tracking-wider opacity-40 mb-3 text-center bg-base-100 py-1">${esc(displayName)}</div>
         <div class="bubble-subsection cooking mb-4">
           <div class="flex items-center gap-2 mb-2 justify-center">
             <span class="css-spinner"></span>
@@ -1493,6 +1511,8 @@ async function loadInvites() {
 
 // --- Insights ---
 async function loadInsights() {
+  // Show loading indicator
+  insightsList.innerHTML = '<div class="flex items-center justify-center p-8"><span class="css-spinner"></span><span class="text-xs opacity-40 ml-2">Loading insights...</span></div>'
   try {
     const params = new URLSearchParams()
     if (currentUserFilter) params.set('userId', currentUserFilter)
@@ -1503,7 +1523,7 @@ async function loadInsights() {
     renderInsights()
   } catch (err) {
     console.error('Failed to load insights:', err)
-    insightsList.innerHTML = '<div class="text-error text-xs">Failed to load insights</div>'
+    insightsList.innerHTML = '<div class="text-error text-xs p-4">Failed to load insights</div>'
   }
 }
 
@@ -1598,6 +1618,7 @@ function selectInsight(id) {
   })
 
   renderInsightDetail(id)
+  insightsMobileShowDetail()
 }
 
 function renderInsightDetail(id) {
