@@ -14,7 +14,7 @@ let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // Virtual scrolling constants
-const ROW_HEIGHT = 36
+const ROW_HEIGHT = 30
 const OVERSCAN = 15
 const CHUNK_SIZE = 200
 
@@ -44,7 +44,8 @@ const detailClose = document.getElementById('detail-close')
 const detailHandle = document.getElementById('detail-handle')
 const sessionToolbar = document.getElementById('session-toolbar')
 const btnCopyConversation = document.getElementById('btn-copy-conversation')
-const userFilter = document.getElementById('user-filter')
+const userFilterBtn = document.getElementById('user-filter')
+const userFilterMenu = document.getElementById('user-filter-menu')
 const bubbleView = document.getElementById('bubble-view')
 const listView = document.getElementById('list-view')
 const cookingContainer = document.getElementById('cooking-container')
@@ -55,7 +56,8 @@ const cookingCount = document.getElementById('cooking-count')
 const waitingCount = document.getElementById('waiting-count')
 const bubbleEmpty = document.getElementById('bubble-empty')
 const bubbleCount = document.getElementById('bubble-count')
-const bubbleUserFilter = document.getElementById('bubble-user-filter')
+const bubbleUserFilterBtn = document.getElementById('bubble-user-filter')
+const bubbleUserFilterMenu = document.getElementById('bubble-user-menu')
 const btnTitle = document.getElementById('btn-title')
 
 // Insights state
@@ -68,7 +70,8 @@ const insightsView = document.getElementById('insights-view')
 const insightsList = document.getElementById('insights-list')
 const insightsEmpty = document.getElementById('insights-empty')
 const insightsCount = document.getElementById('insights-count')
-const insightsUserFilter = document.getElementById('insights-user-filter')
+const insightsUserFilterBtn = document.getElementById('insights-user-filter')
+const insightsUserFilterMenu = document.getElementById('insights-user-menu')
 const insightsBack = document.getElementById('insights-back')
 const btnInsights = document.getElementById('btn-insights')
 const insightsDetailEmpty = document.getElementById('insights-detail-empty')
@@ -113,20 +116,19 @@ btnIntegrations.addEventListener('click', () => switchView('integrations'))
 integrationsBack.addEventListener('click', () => switchView('bubbles'))
 insightsBack.addEventListener('click', () => switchView('bubbles'))
 
-// --- User filter ---
-userFilter.addEventListener('change', () => {
-  currentUserFilter = userFilter.value
-  bubbleUserFilter.value = currentUserFilter
+// --- User filter (DaisyUI dropdown) ---
+function setUserFilter(value) {
+  currentUserFilter = value
+  const label = value || 'All users'
+  userFilterBtn.childNodes[0].textContent = label + ' '
+  userFilterBtn.dataset.value = value
+  bubbleUserFilterBtn.childNodes[0].textContent = label + ' '
+  bubbleUserFilterBtn.dataset.value = value
+  // Close dropdown by blurring
+  document.activeElement?.blur()
   applyFilter()
   if (currentView === 'bubbles') renderBubbles()
-})
-
-bubbleUserFilter.addEventListener('change', () => {
-  currentUserFilter = bubbleUserFilter.value
-  userFilter.value = currentUserFilter
-  applyFilter()
-  if (currentView === 'bubbles') renderBubbles()
-})
+}
 
 function applyFilter() {
   filteredSessions = currentUserFilter
@@ -149,11 +151,10 @@ function applyFilter() {
 
 function updateUserFilterDropdown() {
   const users = [...new Set(sessions.map(s => s.userId).filter(Boolean))].sort()
-  const prev = currentUserFilter
-  const options = '<option value="">All users</option>' +
-    users.map(u => `<option value="${esc(u)}"${u === prev ? ' selected' : ''}>${esc(u)}</option>`).join('')
-  userFilter.innerHTML = options
-  bubbleUserFilter.innerHTML = options
+  const items = `<li><a class="${!currentUserFilter ? 'active' : ''}" onclick="setUserFilter('')">All users</a></li>` +
+    users.map(u => `<li><a class="${u === currentUserFilter ? 'active' : ''}" onclick="setUserFilter('${esc(u)}')">${esc(u)}</a></li>`).join('')
+  userFilterMenu.innerHTML = items
+  bubbleUserFilterMenu.innerHTML = items
 }
 
 // --- Connection ---
@@ -1580,18 +1581,23 @@ async function loadInsights() {
 
 function updateInsightsUserFilter() {
   const users = [...new Set(insights.map(i => i.userId).filter(Boolean))].sort()
-  const prev = currentUserFilter
-  const options = '<option value="">All users</option>' +
-    users.map(u => `<option value="${esc(u)}"${u === prev ? ' selected' : ''}>${esc(u)}</option>`).join('')
-  insightsUserFilter.innerHTML = options
+  const items = `<li><a class="${!currentUserFilter ? 'active' : ''}" onclick="setInsightsUserFilter('')">All users</a></li>` +
+    users.map(u => `<li><a class="${u === currentUserFilter ? 'active' : ''}" onclick="setInsightsUserFilter('${esc(u)}')">${esc(u)}</a></li>`).join('')
+  insightsUserFilterMenu.innerHTML = items
 }
 
-insightsUserFilter.addEventListener('change', () => {
-  currentUserFilter = insightsUserFilter.value
-  userFilter.value = currentUserFilter
-  bubbleUserFilter.value = currentUserFilter
+function setInsightsUserFilter(value) {
+  currentUserFilter = value
+  const label = value || 'All users'
+  insightsUserFilterBtn.childNodes[0].textContent = label + ' '
+  insightsUserFilterBtn.dataset.value = value
+  userFilterBtn.childNodes[0].textContent = label + ' '
+  userFilterBtn.dataset.value = value
+  bubbleUserFilterBtn.childNodes[0].textContent = label + ' '
+  bubbleUserFilterBtn.dataset.value = value
+  document.activeElement?.blur()
   loadInsights()
-})
+}
 
 function renderInsights() {
   const filtered = currentUserFilter
@@ -1620,15 +1626,8 @@ function renderInsights() {
     const summary = summaryMatch ? summaryMatch[1].trim() : ''
     const preview = summary || truncate(insight.content?.replace(/[#*_`]/g, '') || '', 120)
 
-    // Top category badge (only show first one)
-    const topCat = (insight.categories || [])[0]
-    const badge = topCat
-      ? `<span class="insight-badge ${topCat === 'high-frustration' ? 'insight-badge-error' : ''} px-1.5 py-0.5 rounded text-[9px]">${esc(topCat.replace(/-/g, ' '))}</span>`
-      : ''
-
     return `<div class="insight-item-compact ${isActive ? 'active' : ''}" data-id="${insight.id}">
       <div class="flex items-center gap-2 min-w-0">
-        ${badge}
         <span class="insight-preview-compact truncate">${esc(preview)}</span>
       </div>
       <span class="insight-meta-compact shrink-0">${sessions}s · ${events}e · ${time}</span>

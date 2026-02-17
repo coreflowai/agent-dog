@@ -18,11 +18,11 @@
     .session-item { cursor: pointer; outline: none; transition: background 0.15s; }
     .session-item:hover { background: color-mix(in oklch, var(--color-base-content) 8%, transparent); }
     .session-item.active { background: color-mix(in oklch, var(--color-base-content) 12%, transparent); }
-    .event-row { outline: none; transition: background 0.15s; position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 36px; box-sizing: border-box; }
+    .event-row { outline: none; transition: background 0.15s; position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: flex-start; overflow: hidden; height: 30px; box-sizing: border-box; }
     .event-row:hover { background: color-mix(in oklch, var(--color-base-content) 5%, transparent); }
     .event-row.selected { background: color-mix(in oklch, var(--color-base-content) 10%, transparent); }
-    .event-row .cell-time { flex-shrink: 0; padding: 8px 8px 8px 12px; }
-    .event-row .cell-content { flex: 1; min-width: 0; padding: 8px 12px 8px 0; overflow: hidden; }
+    .event-row .cell-time { flex-shrink: 0; padding: 6px 6px 6px 10px; }
+    .event-row .cell-content { flex: 1; min-width: 0; padding: 6px 10px 6px 0; overflow: hidden; }
     .event-row .cell-content > * { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .event-detail { max-height: 200px; overflow-y: auto; }
     #session-list:focus, #event-panel:focus { outline: none; }
@@ -219,7 +219,7 @@
       #mobile-back span { font-size: 13px; }
 
       /* Event panel text sizes */
-      .event-row .cell-time, .event-row .cell-content { padding-top: 8px; padding-bottom: 8px; }
+      .event-row .cell-time, .event-row .cell-content { padding-top: 6px; padding-bottom: 6px; }
 
       /* Insights: full-width stacked on mobile */
       #insights-sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
@@ -288,9 +288,10 @@
       </div>
       <div class="flex items-center gap-2">
         <button id="btn-clear-waiting" class="btn btn-xs btn-ghost opacity-40 hover:opacity-100 text-[10px] hidden" title="Archive all waiting sessions">clear waiting</button>
-        <select id="bubble-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px]">
-          <option value="">All users</option>
-        </select>
+        <div class="dropdown dropdown-end">
+          <div id="bubble-user-filter" tabindex="0" role="button" class="btn btn-xs btn-ghost text-[10px] gap-1" data-value="">All users <span class="opacity-40">▾</span></div>
+          <ul id="bubble-user-menu" tabindex="0" class="dropdown-content menu menu-xs bg-base-200 border border-base-300 rounded-lg z-50 w-44 p-1 shadow-lg mt-1 max-h-48 overflow-y-auto"></ul>
+        </div>
       </div>
     </div>
     <div id="bubble-scroll" class="flex-1 overflow-y-auto">
@@ -331,9 +332,10 @@
     <div id="sidebar" class="border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col" style="width:256px;min-width:120px;max-width:50vw;">
       <div class="px-3 py-2 border-b border-base-300 flex items-center justify-between gap-2">
         <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Sessions</span>
-        <select id="user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[140px] flex-shrink min-w-0">
-          <option value="">All users</option>
-        </select>
+        <div class="dropdown dropdown-end">
+          <div id="user-filter" tabindex="0" role="button" class="btn btn-xs btn-ghost text-[10px] gap-1" data-value="">All users <span class="opacity-40">▾</span></div>
+          <ul id="user-filter-menu" tabindex="0" class="dropdown-content menu menu-xs bg-base-200 border border-base-300 rounded-lg z-50 w-44 p-1 shadow-lg mt-1 max-h-48 overflow-y-auto"></ul>
+        </div>
       </div>
       <div id="session-list" class="flex-1 overflow-y-auto" tabindex="-1">
         <div class="p-4 text-center opacity-40 text-xs">No sessions yet</div>
@@ -395,9 +397,10 @@
           <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Insights</span>
           <span id="insights-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
         </div>
-        <select id="insights-user-filter" class="select select-xs text-[10px] h-5 min-h-0 leading-none py-0 pr-5 border-base-300 bg-base-100 max-w-[100px]">
-          <option value="">All users</option>
-        </select>
+        <div class="dropdown dropdown-end">
+          <div id="insights-user-filter" tabindex="0" role="button" class="btn btn-xs btn-ghost text-[10px] gap-1" data-value="">All users <span class="opacity-40">▾</span></div>
+          <ul id="insights-user-menu" tabindex="0" class="dropdown-content menu menu-xs bg-base-200 border border-base-300 rounded-lg z-50 w-44 p-1 shadow-lg mt-1 max-h-48 overflow-y-auto"></ul>
+        </div>
       </div>
       <div id="insights-list" class="flex-1 overflow-y-auto">
         <div id="insights-empty" class="p-4 text-center opacity-40 text-xs">
