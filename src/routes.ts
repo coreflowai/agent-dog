@@ -8,8 +8,10 @@ import { listInsights, getInsight, deleteInsight } from './db/insights'
 import { addQuestion, getQuestion, listQuestions, updateQuestionAnswer, getIntegrationConfig, setIntegrationConfig } from './db/slack'
 import { createAuth, migrateAuth } from './auth'
 import type { EventEmitter } from 'events'
-import type { IngestPayload, CreateSlackQuestionInput } from './types'
+import type { IngestPayload, CreateSlackQuestionInput, CreateDataSourceInput, UpdateDataSourceInput } from './types'
 import type { SlackBot } from './slack'
+import type { SourceManager } from './sources'
+import { listSourceEntries, getEntryCount } from './db/sources'
 
 function expandPath(p: string): string {
   if (p.startsWith('~/')) return resolve(homedir(), p.slice(2))
@@ -45,7 +47,7 @@ function json(data: unknown, status = 200) {
   })
 }
 
-export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }, internalBus?: EventEmitter) {
+export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }, internalBus?: EventEmitter, sourceManager?: SourceManager) {
   return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
@@ -585,6 +587,107 @@ export const AgentFlowPlugin = async () => {
     // GET /api/integrations/slack/status — get bot connection status
     if (req.method === 'GET' && pathname === '/api/integrations/slack/status') {
       return json({ connected: slackBot?.bot?.isConnected() || false })
+    }
+
+    // --- Data Sources API ---
+
+    // GET /api/sources — list all data sources with entry counts
+    if (req.method === 'GET' && pathname === '/api/sources') {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const sources = sourceManager.getSources()
+      const withCounts = sources.map(s => ({
+        ...s,
+        entryCount: getEntryCount(s.id),
+      }))
+      return json(withCounts)
+    }
+
+    // POST /api/sources — create data source
+    if (req.method === 'POST' && pathname === '/api/sources') {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      try {
+        const input = (await req.json()) as CreateDataSourceInput
+        if (!input.name || !input.type || !input.config) {
+          return json({ error: 'Missing required fields: name, type, config' }, 400)
+        }
+        const source = await sourceManager.addSource(input)
+        return json(source)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create source' }, 500)
+      }
+    }
+
+    // POST /api/sources/:id/toggle — enable/disable
+    if (req.method === 'POST' && pathname.match(/^\/api\/sources\/[^/]+\/toggle$/)) {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const id = pathname.replace('/api/sources/', '').replace('/toggle', '')
+      try {
+        const body = (await req.json()) as { enabled: boolean }
+        const source = await sourceManager.toggleSource(id, body.enabled)
+        if (!source) return json({ error: 'Source not found' }, 404)
+        return json(source)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to toggle source' }, 500)
+      }
+    }
+
+    // POST /api/sources/:id/sync — manual sync (RSS)
+    if (req.method === 'POST' && pathname.match(/^\/api\/sources\/[^/]+\/sync$/)) {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const id = pathname.replace('/api/sources/', '').replace('/sync', '')
+      try {
+        const result = await sourceManager.syncNow(id)
+        return json(result)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to sync source' }, 500)
+      }
+    }
+
+    // GET /api/sources/:id/entries — paginated entries for a source
+    if (req.method === 'GET' && pathname.match(/^\/api\/sources\/[^/]+\/entries$/)) {
+      const id = pathname.replace('/api/sources/', '').replace('/entries', '')
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+      return json(listSourceEntries({ dataSourceId: id, limit, offset }))
+    }
+
+    // GET /api/sources/:id — source detail
+    if (req.method === 'GET' && pathname.match(/^\/api\/sources\/[^/]+$/) && !pathname.includes('/entries')) {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const id = pathname.replace('/api/sources/', '')
+      const source = sourceManager.getSource(id)
+      if (!source) return json({ error: 'Source not found' }, 404)
+      return json({ ...source, entryCount: getEntryCount(id) })
+    }
+
+    // PUT /api/sources/:id — update source config/mapping
+    if (req.method === 'PUT' && pathname.match(/^\/api\/sources\/[^/]+$/)) {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const id = pathname.replace('/api/sources/', '')
+      try {
+        const input = (await req.json()) as UpdateDataSourceInput
+        const source = await sourceManager.updateSource(id, input)
+        if (!source) return json({ error: 'Source not found' }, 404)
+        return json(source)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to update source' }, 500)
+      }
+    }
+
+    // DELETE /api/sources/:id — delete source + entries
+    if (req.method === 'DELETE' && pathname.match(/^\/api\/sources\/[^/]+$/)) {
+      if (!sourceManager) return json({ error: 'Sources not enabled' }, 500)
+      const id = pathname.replace('/api/sources/', '')
+      await sourceManager.removeSource(id)
+      return json({ ok: true })
+    }
+
+    // GET /api/source-entries — global entry feed (paginated, filterable by source)
+    if (req.method === 'GET' && pathname === '/api/source-entries') {
+      const dataSourceId = url.searchParams.get('dataSourceId') || undefined
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10)
+      const offset = parseInt(url.searchParams.get('offset') || '0', 10)
+      return json(listSourceEntries({ dataSourceId, limit, offset }))
     }
 
     return null // Not handled

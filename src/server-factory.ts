@@ -7,6 +7,8 @@ import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
 import { createInsightScheduler, type InsightScheduler } from './insights'
 import { createSlackBot, type SlackBot } from './slack'
 import { getIntegrationConfig } from './db/slack'
+import { initSourcesDb } from './db/sources'
+import { createSourceManager, type SourceManager } from './sources'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -44,6 +46,10 @@ export function createServer(options: ServerOptions = {}) {
 
   const resolvedDbPath = dbPath ?? process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
   initDb(resolvedDbPath)
+
+  // Initialize separate sources DB for external context data
+  const sourcesDbPath = process.env.SOURCES_DB ?? 'sources.db'
+  initSourcesDb(sourcesDbPath)
 
   let auth: Auth | null = null
   let authReady: Promise<void> | null = null
@@ -153,18 +159,38 @@ export function createServer(options: ServerOptions = {}) {
     restart: restartSlackBot,
   }
 
-  const router = createRouter(io, slackBotRef, internalBus)
+  // Source manager for external context (Slack channels, Discord, RSS feeds)
+  // Use a proxy for slackBot deps so listeners can access whichever bot is active
+  const sourceManager = createSourceManager({
+    io,
+    deps: {
+      slackBot: {
+        registerChannelListener(channelId: string, cb: (msg: any) => void) {
+          slackBot?.registerChannelListener(channelId, cb)
+        },
+        unregisterChannelListener(channelId: string) {
+          slackBot?.unregisterChannelListener(channelId)
+        },
+      },
+    },
+  })
+
+  const router = createRouter(io, slackBotRef, internalBus, sourceManager)
 
   // Create insight scheduler after slackBotRef is set up
   if (insightsEnabled) {
     insightScheduler = createInsightScheduler({
       io,
       dbPath: resolvedDbPath,
+      sourcesDbPath,
       runOnStart: insightsRunOnStart,
       slackBot: slackBotRef,
       internalBus,
     })
   }
+
+  // Start source listeners from DB state
+  sourceManager.start().catch(err => console.error('SourceManager startup error:', err))
 
   function serveHtml(filePath: string) {
     const file = Bun.file(filePath)
@@ -301,6 +327,7 @@ export function createServer(options: ServerOptions = {}) {
     url: `http://localhost:${server.port}`,
     close: async () => {
       insightScheduler?.stop()
+      await sourceManager.stop()
       if (slackBot) {
         try { await slackBot.stop() } catch {}
       }

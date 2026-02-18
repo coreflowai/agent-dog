@@ -32,6 +32,8 @@ export type InsightSchedulerOptions = {
   io: SocketIOServer
   /** Path to the SQLite database */
   dbPath: string
+  /** Path to the sources SQLite database (for external context) */
+  sourcesDbPath?: string
   /** Cron expression (default: every 5 hours) */
   cronExpression?: string
   /** Whether to run immediately on start */
@@ -65,6 +67,7 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
   const {
     io,
     dbPath,
+    sourcesDbPath,
     cronExpression = '0 */5 * * *', // Every 5 hours
     runOnStart = false,
     minEventsForAnalysis = MIN_EVENTS_FOR_ANALYSIS,
@@ -211,7 +214,7 @@ async function analyzeUser(
   const analysisWindowStart = sinceTimestamp || Date.now() - DEFAULT_ANALYSIS_WINDOW_MS
   const analysisWindowEnd = Date.now()
 
-  const result = await runAnalysis(userId, null, sinceTimestamp, dbPath)
+  const result = await runAnalysis(userId, null, sinceTimestamp, dbPath, sourcesDbPath)
 
   if (!result.success) {
     console.error(`[InsightScheduler] Analysis failed for ${userId}:`, result.error)
@@ -323,6 +326,7 @@ async function analyzeUser(
       originalContent: currentContent,
       answers,
       dbPath,
+      sourcesDbPath,
     })
 
     if (!refinedResult.success) {
@@ -390,6 +394,7 @@ async function handleLateAnswer(
     originalContent: currentContent,
     answers,
     dbPath,
+    sourcesDbPath,
   })
 
   if (!refinedResult.success) {

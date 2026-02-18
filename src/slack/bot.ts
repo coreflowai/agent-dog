@@ -19,6 +19,8 @@ export type SlackBot = {
   postNotification: (message: string) => Promise<void>
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
+  registerChannelListener: (channelId: string, cb: (msg: any) => void) => void
+  unregisterChannelListener: (channelId: string) => void
 }
 
 // Validate token with plain fetch — never touches @slack/bolt internals
@@ -38,6 +40,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
   const { botToken, appToken, channel, io, internalBus } = options
   let connected = false
   let app: App | null = null
+  const channelListeners = new Map<string, (msg: any) => void>()
 
   function setupListeners(a: App) {
     // Catch async errors from Socket Mode / Web API
@@ -49,6 +52,14 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
     // Thread reply listener — matches replies to question threads
     a.message(async ({ message, client }) => {
+      // Dispatch to registered channel listeners (for data source ingestion)
+      if ('channel' in message && message.channel) {
+        const channelCb = channelListeners.get(message.channel)
+        if (channelCb) {
+          try { channelCb(message) } catch {}
+        }
+      }
+
       if (!('thread_ts' in message) || !message.thread_ts) return
       if (!('channel' in message) || !message.channel) return
       if ('bot_id' in message && message.bot_id) return
@@ -248,5 +259,11 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     },
     isConnected: () => connected,
     testConnection,
+    registerChannelListener: (channelId: string, cb: (msg: any) => void) => {
+      channelListeners.set(channelId, cb)
+    },
+    unregisterChannelListener: (channelId: string) => {
+      channelListeners.delete(channelId)
+    },
   }
 }

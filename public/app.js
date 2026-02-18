@@ -10,7 +10,7 @@ let selectedSessionIdx = -1
 let selectedEventIdx = -1
 let displayRows = []
 let focusArea = 'sessions' // 'sessions' | 'events'
-let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations'
+let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations' | 'feed'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // Virtual scrolling constants
@@ -94,6 +94,8 @@ function switchView(view) {
   listView.classList.add('hidden')
   insightsView.classList.add('hidden')
   integrationsView.classList.add('hidden')
+  const feedViewEl = document.getElementById('feed-view')
+  if (feedViewEl) feedViewEl.classList.add('hidden')
 
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
@@ -106,15 +108,24 @@ function switchView(view) {
     else renderInsights()
   } else if (view === 'integrations') {
     integrationsView.classList.remove('hidden')
-    loadSlackConfig()
+    showIntegrationPanel(currentIntegration)
+  } else if (view === 'feed') {
+    if (feedViewEl) feedViewEl.classList.remove('hidden')
+    if (!feedLoaded) {
+      // Ensure dataSources is loaded for source name/icon resolution
+      if (dataSources.length === 0) loadSources()
+      loadFeedEntries()
+    }
   }
 }
 
 btnTitle.addEventListener('click', () => switchView('bubbles'))
+document.getElementById('btn-feed').addEventListener('click', () => switchView('feed'))
 btnInsights.addEventListener('click', () => switchView('insights'))
 btnIntegrations.addEventListener('click', () => switchView('integrations'))
 integrationsBack.addEventListener('click', () => switchView('bubbles'))
 insightsBack.addEventListener('click', () => switchView('bubbles'))
+document.getElementById('feed-back').addEventListener('click', () => switchView('bubbles'))
 
 // --- User filter (DaisyUI dropdown) ---
 function setUserFilter(value) {
@@ -310,6 +321,12 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'i') {
     e.preventDefault()
     switchView(currentView === 'insights' ? 'bubbles' : 'insights')
+    return
+  }
+
+  if (e.key === 'f') {
+    e.preventDefault()
+    switchView(currentView === 'feed' ? 'bubbles' : 'feed')
     return
   }
 
@@ -1979,6 +1996,456 @@ slackTestBtn.addEventListener('click', async () => {
 // Listen for slack status events
 socket.on('slack:status', ({ connected }) => {
   if (currentView === 'integrations') setSlackStatus(connected)
+})
+
+// --- Integration Nav Switching ---
+let currentIntegration = 'slack'
+
+function showIntegrationPanel(integration) {
+  currentIntegration = integration
+  const slackPanel = document.getElementById('slack-panel')
+  const sourcesPanel = document.getElementById('sources-panel')
+  if (!slackPanel || !sourcesPanel) return
+
+  // Update nav items
+  document.querySelectorAll('.integration-nav-item').forEach(el => {
+    const isActive = el.dataset.integration === integration
+    el.classList.toggle('border-l-primary', isActive)
+    el.classList.toggle('bg-base-200/50', isActive)
+    el.classList.toggle('border-l-transparent', !isActive)
+  })
+
+  if (integration === 'slack') {
+    slackPanel.classList.remove('hidden')
+    sourcesPanel.classList.add('hidden')
+    loadSlackConfig()
+  } else if (integration === 'sources') {
+    slackPanel.classList.add('hidden')
+    sourcesPanel.classList.remove('hidden')
+    loadSources()
+  }
+}
+
+// Integration nav click handler
+document.querySelectorAll('.integration-nav-item').forEach(el => {
+  el.addEventListener('click', () => showIntegrationPanel(el.dataset.integration))
+})
+
+// --- Data Sources ---
+let dataSources = []
+let editingSourceId = null
+
+const sourcesListEl = document.getElementById('sources-list')
+const sourcesForm = document.getElementById('sources-form')
+const sourcesFormTitle = document.getElementById('sources-form-title')
+const sourcesAddBtn = document.getElementById('sources-add-btn')
+const sourceNameInput = document.getElementById('source-name')
+const sourceTypeSelect = document.getElementById('source-type')
+const sourceSaveBtn = document.getElementById('source-save-btn')
+const sourceCancelBtn = document.getElementById('source-cancel-btn')
+const sourceSaveStatus = document.getElementById('source-save-status')
+
+// Type-specific config panels
+const configSlack = document.getElementById('source-config-slack')
+const configDiscord = document.getElementById('source-config-discord')
+const configRss = document.getElementById('source-config-rss')
+
+function showSourceConfigPanel(type) {
+  configSlack.classList.toggle('hidden', type !== 'slack')
+  configDiscord.classList.toggle('hidden', type !== 'discord')
+  configRss.classList.toggle('hidden', type !== 'rss')
+}
+
+sourceTypeSelect.addEventListener('change', () => showSourceConfigPanel(sourceTypeSelect.value))
+
+async function loadSources() {
+  try {
+    const res = await fetch('/api/sources', { credentials: 'include' })
+    dataSources = await res.json()
+    renderSources()
+  } catch {
+    sourcesListEl.innerHTML = '<div class="text-error text-xs p-4">Failed to load sources</div>'
+  }
+}
+
+const SOURCE_TYPE_ICONS = {
+  slack: '<svg width="14" height="14" viewBox="0 0 127 127" fill="none"><path d="M27.2 80a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 0 80a13.6 13.6 0 0 1 13.6-13.6h13.6V80zm6.8 0a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6v34a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 34 114V80z" fill="#E01E5A"/><path d="M47.6 27.2A13.6 13.6 0 0 1 34 13.6 13.6 13.6 0 0 1 47.6 0 13.6 13.6 0 0 1 61.2 13.6v13.6H47.6zm0 6.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H13.6A13.6 13.6 0 0 1 0 47.6 13.6 13.6 0 0 1 13.6 34h34z" fill="#36C5F0"/><path d="M99.8 47.6a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H99.8V47.6zm-6.8 0a13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V13.6A13.6 13.6 0 0 1 79.4 0 13.6 13.6 0 0 1 93 13.6v34z" fill="#2EB67D"/><path d="M79.4 99.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V99.8h13.6zm0-6.8a13.6 13.6 0 0 1-13.6-13.6A13.6 13.6 0 0 1 79.4 66h34a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.4H79.4z" fill="#ECB22E"/></svg>',
+  discord: '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.492c-1.53-.69-3.17-1.2-4.885-1.49a.075.075 0 0 0-.079.036c-.21.369-.444.85-.608 1.23a18.566 18.566 0 0 0-5.487 0 12.36 12.36 0 0 0-.617-1.23A.077.077 0 0 0 8.562 3c-1.714.29-3.354.8-4.885 1.491a.07.07 0 0 0-.032.027C.533 9.093-.32 13.555.099 17.961a.08.08 0 0 0 .031.055 20.03 20.03 0 0 0 5.993 2.98.078.078 0 0 0 .084-.026 13.83 13.83 0 0 0 1.226-1.963.074.074 0 0 0-.041-.104 13.201 13.201 0 0 1-1.872-.878.075.075 0 0 1-.008-.125c.126-.093.252-.19.372-.287a.075.075 0 0 1 .078-.01c3.927 1.764 8.18 1.764 12.061 0a.075.075 0 0 1 .079.009c.12.098.245.195.372.288a.075.075 0 0 1-.006.125c-.598.344-1.22.635-1.873.877a.075.075 0 0 0-.041.105c.36.687.772 1.341 1.225 1.962a.077.077 0 0 0 .084.028 19.963 19.963 0 0 0 6.002-2.981.076.076 0 0 0 .032-.054c.5-5.094-.838-9.52-3.549-13.442a.06.06 0 0 0-.031-.028zM8.02 15.278c-1.182 0-2.157-1.069-2.157-2.38 0-1.312.956-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.956 2.38-2.157 2.38zm7.975 0c-1.183 0-2.157-1.069-2.157-2.38 0-1.312.955-2.38 2.157-2.38 1.21 0 2.176 1.077 2.157 2.38 0 1.312-.946 2.38-2.157 2.38z"/></svg>',
+  rss: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>',
+}
+
+function renderSources() {
+  if (dataSources.length === 0) {
+    sourcesListEl.innerHTML = '<div class="text-xs opacity-40 p-4 text-center">No data sources configured</div>'
+    return
+  }
+  sourcesListEl.innerHTML = dataSources.map(s => {
+    const icon = SOURCE_TYPE_ICONS[s.type] || ''
+    const statusDot = s.enabled
+      ? '<span class="inline-block w-2 h-2 rounded-full bg-success"></span>'
+      : '<span class="inline-block w-2 h-2 rounded-full bg-base-300"></span>'
+    const lastSync = s.lastSyncAt ? timeAgo(s.lastSyncAt) : 'never'
+    const entryCount = s.entryCount || 0
+    const error = s.lastSyncError
+      ? `<span class="text-error text-[10px] truncate max-w-[200px] inline-block align-bottom">${esc(s.lastSyncError)}</span>`
+      : ''
+    return `<div class="flex items-center gap-3 p-3 border border-base-300 rounded-lg hover:bg-base-200/30 transition-colors" data-source-id="${s.id}">
+      <span class="opacity-60 flex-shrink-0">${icon}</span>
+      <div class="flex-1 min-w-0">
+        <div class="text-xs font-medium flex items-center gap-1.5">${statusDot} ${esc(s.name)}</div>
+        <div class="text-[10px] opacity-40">${s.type} · ${entryCount} entries · synced ${lastSync} ${error}</div>
+      </div>
+      <div class="flex items-center gap-1 flex-shrink-0">
+        ${s.type === 'rss' ? `<button class="btn btn-xs btn-ghost opacity-50 hover:opacity-100 source-sync-btn" data-id="${s.id}" title="Sync now"><i data-lucide="refresh-cw" class="w-3 h-3"></i></button>` : ''}
+        <button class="btn btn-xs btn-ghost opacity-50 hover:opacity-100 source-toggle-btn" data-id="${s.id}" data-enabled="${s.enabled ? 1 : 0}" title="${s.enabled ? 'Disable' : 'Enable'}">
+          <i data-lucide="${s.enabled ? 'pause' : 'play'}" class="w-3 h-3"></i>
+        </button>
+        <button class="btn btn-xs btn-ghost opacity-50 hover:opacity-100 source-edit-btn" data-id="${s.id}" title="Edit"><i data-lucide="settings" class="w-3 h-3"></i></button>
+        <button class="btn btn-xs btn-ghost opacity-30 hover:opacity-100 hover:text-error source-delete-btn" data-id="${s.id}" title="Delete"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
+      </div>
+    </div>`
+  }).join('')
+
+  // Event delegation
+  sourcesListEl.querySelectorAll('.source-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const enabled = btn.dataset.enabled === '1'
+      await fetch(`/api/sources/${btn.dataset.id}/toggle`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !enabled }),
+      })
+      loadSources()
+    })
+  })
+  sourcesListEl.querySelectorAll('.source-sync-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      await fetch(`/api/sources/${btn.dataset.id}/sync`, { method: 'POST', credentials: 'include' })
+      btn.disabled = false
+      loadSources()
+    })
+  })
+  sourcesListEl.querySelectorAll('.source-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => openSourceForm(btn.dataset.id))
+  })
+  sourcesListEl.querySelectorAll('.source-delete-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete this data source and all its entries?')) return
+      await fetch(`/api/sources/${btn.dataset.id}`, { method: 'DELETE', credentials: 'include' })
+      loadSources()
+    })
+  })
+  lucide.createIcons()
+}
+
+function openSourceForm(id) {
+  editingSourceId = id || null
+  sourcesFormTitle.textContent = id ? 'Edit Data Source' : 'Add Data Source'
+  sourcesForm.classList.remove('hidden')
+
+  if (id) {
+    const s = dataSources.find(s => s.id === id)
+    if (!s) return
+    sourceNameInput.value = s.name
+    sourceTypeSelect.value = s.type
+    showSourceConfigPanel(s.type)
+    // Fill in config
+    if (s.type === 'slack') {
+      document.getElementById('source-slack-channel').value = s.config?.channelId || ''
+    } else if (s.type === 'discord') {
+      document.getElementById('source-discord-token').value = s.config?.botToken || ''
+      document.getElementById('source-discord-guild').value = s.config?.guildId || ''
+      document.getElementById('source-discord-channel').value = s.config?.channelId || ''
+    } else if (s.type === 'rss') {
+      document.getElementById('source-rss-url').value = s.config?.feedUrl || ''
+      document.getElementById('source-rss-interval').value = s.config?.pollIntervalMinutes || 15
+    }
+    // Fill field mapping
+    const fm = s.fieldMapping || {}
+    document.getElementById('source-map-author').value = fm.author || ''
+    document.getElementById('source-map-content').value = fm.content || ''
+    document.getElementById('source-map-url').value = fm.url || ''
+    document.getElementById('source-map-timestamp').value = fm.timestamp || ''
+  } else {
+    sourceNameInput.value = ''
+    sourceTypeSelect.value = 'slack'
+    showSourceConfigPanel('slack')
+    document.getElementById('source-slack-channel').value = ''
+    document.getElementById('source-discord-token').value = ''
+    document.getElementById('source-discord-guild').value = ''
+    document.getElementById('source-discord-channel').value = ''
+    document.getElementById('source-rss-url').value = ''
+    document.getElementById('source-rss-interval').value = '15'
+    document.getElementById('source-map-author').value = ''
+    document.getElementById('source-map-content').value = ''
+    document.getElementById('source-map-url').value = ''
+    document.getElementById('source-map-timestamp').value = ''
+  }
+}
+
+sourcesAddBtn.addEventListener('click', () => openSourceForm(null))
+sourceCancelBtn.addEventListener('click', () => {
+  sourcesForm.classList.add('hidden')
+  editingSourceId = null
+})
+
+sourceSaveBtn.addEventListener('click', async () => {
+  const name = sourceNameInput.value.trim()
+  const type = sourceTypeSelect.value
+  if (!name) { showSourceSaveStatus('Name is required', true); return }
+
+  let config = {}
+  if (type === 'slack') {
+    config = { channelId: document.getElementById('source-slack-channel').value.trim() }
+    if (!config.channelId) { showSourceSaveStatus('Channel ID is required', true); return }
+  } else if (type === 'discord') {
+    config = {
+      botToken: document.getElementById('source-discord-token').value.trim(),
+      guildId: document.getElementById('source-discord-guild').value.trim(),
+      channelId: document.getElementById('source-discord-channel').value.trim(),
+    }
+    if (!config.botToken || !config.channelId) { showSourceSaveStatus('Bot token and channel ID are required', true); return }
+  } else if (type === 'rss') {
+    config = {
+      feedUrl: document.getElementById('source-rss-url').value.trim(),
+      pollIntervalMinutes: parseInt(document.getElementById('source-rss-interval').value) || 15,
+    }
+    if (!config.feedUrl) { showSourceSaveStatus('Feed URL is required', true); return }
+  }
+
+  // Build field mapping (only include non-empty values)
+  const fm = {}
+  const mapAuthor = document.getElementById('source-map-author').value.trim()
+  const mapContent = document.getElementById('source-map-content').value.trim()
+  const mapUrl = document.getElementById('source-map-url').value.trim()
+  const mapTimestamp = document.getElementById('source-map-timestamp').value.trim()
+  if (mapAuthor) fm.author = mapAuthor
+  if (mapContent) fm.content = mapContent
+  if (mapUrl) fm.url = mapUrl
+  if (mapTimestamp) fm.timestamp = mapTimestamp
+  const fieldMapping = Object.keys(fm).length > 0 ? fm : undefined
+
+  sourceSaveBtn.disabled = true
+  sourceSaveBtn.textContent = 'Saving...'
+
+  try {
+    const method = editingSourceId ? 'PUT' : 'POST'
+    const url = editingSourceId ? `/api/sources/${editingSourceId}` : '/api/sources'
+    const body = editingSourceId
+      ? { name, config, fieldMapping }
+      : { name, type, config, fieldMapping }
+    const res = await fetch(url, {
+      method, credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const data = await res.json()
+    if (data.error) {
+      showSourceSaveStatus(data.error, true)
+    } else {
+      sourcesForm.classList.add('hidden')
+      editingSourceId = null
+      loadSources()
+    }
+  } catch {
+    showSourceSaveStatus('Network error', true)
+  }
+  sourceSaveBtn.disabled = false
+  sourceSaveBtn.textContent = 'Save'
+})
+
+function showSourceSaveStatus(msg, isError) {
+  sourceSaveStatus.textContent = msg
+  sourceSaveStatus.className = `text-xs ${isError ? 'text-error' : 'text-success'}`
+  sourceSaveStatus.classList.remove('hidden')
+  setTimeout(() => sourceSaveStatus.classList.add('hidden'), 4000)
+}
+
+// Socket.IO: Listen for source events
+socket.on('source:new', () => { if (currentView === 'integrations' && currentIntegration === 'sources') loadSources() })
+socket.on('source:updated', () => { if (currentView === 'integrations' && currentIntegration === 'sources') loadSources() })
+socket.on('source:deleted', () => { if (currentView === 'integrations' && currentIntegration === 'sources') loadSources() })
+
+// --- Global Feed View ---
+let feedLoaded = false
+let feedEntries = []
+let feedSourceFilter = ''
+let feedPage = 0
+const FEED_PAGE_SIZE = 50
+let feedLoadingMore = false
+let feedHasMore = true
+
+// Build a source name map from dataSources
+function getFeedSourceMap() {
+  const map = {}
+  for (const s of dataSources) map[s.id] = s
+  return map
+}
+
+async function loadFeedEntries(append = false) {
+  if (!append) {
+    feedPage = 0
+    feedEntries = []
+    feedHasMore = true
+  }
+  try {
+    const params = new URLSearchParams({ limit: String(FEED_PAGE_SIZE), offset: String(feedPage * FEED_PAGE_SIZE) })
+    if (feedSourceFilter) params.set('dataSourceId', feedSourceFilter)
+    const res = await fetch(`/api/source-entries?${params}`)
+    if (!res.ok) throw new Error('Failed to load')
+    const entries = await res.json()
+    if (entries.length < FEED_PAGE_SIZE) feedHasMore = false
+    feedEntries = append ? feedEntries.concat(entries) : entries
+    feedLoaded = true
+    renderFeedEntries()
+    populateFeedSourceFilter()
+  } catch {
+    const feedList = document.getElementById('feed-list')
+    if (feedList) feedList.innerHTML = '<div class="text-error text-xs p-4 text-center">Failed to load feed entries</div>'
+  }
+}
+
+function renderFeedEntries() {
+  const feedList = document.getElementById('feed-list')
+  const feedEmpty = document.getElementById('feed-empty')
+  const feedCount = document.getElementById('feed-count')
+  if (!feedList) return
+
+  if (feedCount) feedCount.textContent = feedEntries.length
+
+  if (feedEntries.length === 0) {
+    if (feedEmpty) feedEmpty.classList.remove('hidden')
+    feedList.querySelectorAll('.feed-entry').forEach(el => el.remove())
+    const loadMore = feedList.querySelector('.feed-load-more')
+    if (loadMore) loadMore.remove()
+    return
+  }
+
+  if (feedEmpty) feedEmpty.classList.add('hidden')
+
+  const sourceMap = getFeedSourceMap()
+  const html = feedEntries.map(entry => {
+    const src = sourceMap[entry.dataSourceId]
+    const typeIcon = src ? (SOURCE_TYPE_ICONS[src.type] || '') : ''
+    const sourceName = src ? src.name : 'Unknown'
+    const author = entry.author || 'Unknown'
+    const content = (entry.content || '').length > 300 ? entry.content.slice(0, 300) + '…' : (entry.content || '')
+    const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''
+    const url = entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener" class="link link-primary text-[10px] ml-2">Open</a>` : ''
+
+    return `<div class="feed-entry">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="opacity-60">${typeIcon}</span>
+        <span class="badge badge-xs badge-ghost text-[9px]">${sourceName}</span>
+        <span class="font-semibold text-xs">${escapeHtml(author)}</span>
+        <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap">${ts}</span>
+        ${url}
+      </div>
+      <div class="text-xs opacity-80 whitespace-pre-wrap break-words">${escapeHtml(content)}</div>
+    </div>`
+  }).join('')
+
+  // Preserve scroll position for appends
+  const existingEntries = feedList.querySelectorAll('.feed-entry')
+  existingEntries.forEach(el => el.remove())
+  const loadMore = feedList.querySelector('.feed-load-more')
+  if (loadMore) loadMore.remove()
+
+  feedList.insertAdjacentHTML('beforeend', html)
+
+  if (feedHasMore) {
+    feedList.insertAdjacentHTML('beforeend', `<div class="feed-load-more text-center py-3">
+      <button class="btn btn-xs btn-ghost opacity-60" onclick="loadMoreFeedEntries()">Load more</button>
+    </div>`)
+  }
+}
+
+async function loadMoreFeedEntries() {
+  if (feedLoadingMore || !feedHasMore) return
+  feedLoadingMore = true
+  feedPage++
+  await loadFeedEntries(true)
+  feedLoadingMore = false
+}
+
+function populateFeedSourceFilter() {
+  const menu = document.getElementById('feed-source-menu')
+  const btn = document.getElementById('feed-source-filter')
+  if (!menu) return
+
+  const items = [{ id: '', name: 'All sources' }].concat(dataSources.map(s => ({ id: s.id, name: s.name })))
+  menu.innerHTML = items.map(s => {
+    const active = s.id === feedSourceFilter ? 'active' : ''
+    return `<li><a class="text-[10px] ${active}" onclick="setFeedSourceFilter('${s.id}')">${escapeHtml(s.name)}</a></li>`
+  }).join('')
+
+  if (btn) {
+    const current = dataSources.find(s => s.id === feedSourceFilter)
+    btn.childNodes[0].textContent = current ? current.name + ' ' : 'All sources '
+  }
+}
+
+function setFeedSourceFilter(sourceId) {
+  feedSourceFilter = sourceId
+  feedLoaded = false
+  loadFeedEntries()
+  document.activeElement?.blur()
+}
+
+// Helper: escape HTML (reuse if already defined, otherwise define)
+function escapeHtml(str) {
+  const div = document.createElement('div')
+  div.textContent = str
+  return div.innerHTML
+}
+
+// Socket.IO: real-time feed entries
+socket.on('source:entry', (data) => {
+  if (!feedLoaded) return
+  const entry = data.entry || data
+  // Apply source filter
+  if (feedSourceFilter && entry.dataSourceId !== feedSourceFilter) return
+
+  // Prepend to in-memory list
+  feedEntries.unshift(entry)
+
+  // Prepend to DOM for live update
+  const feedList = document.getElementById('feed-list')
+  const feedEmpty = document.getElementById('feed-empty')
+  const feedCount = document.getElementById('feed-count')
+  if (!feedList) return
+
+  if (feedEmpty) feedEmpty.classList.add('hidden')
+  if (feedCount) feedCount.textContent = feedEntries.length
+
+  const sourceMap = getFeedSourceMap()
+  const src = sourceMap[entry.dataSourceId]
+  const typeIcon = src ? (SOURCE_TYPE_ICONS[src.type] || '') : ''
+  const sourceName = src ? src.name : 'Unknown'
+  const author = entry.author || 'Unknown'
+  const content = (entry.content || '').length > 300 ? entry.content.slice(0, 300) + '…' : (entry.content || '')
+  const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''
+  const url = entry.url ? `<a href="${entry.url}" target="_blank" rel="noopener" class="link link-primary text-[10px] ml-2">Open</a>` : ''
+
+  const entryHtml = `<div class="feed-entry" style="animation: fadeIn 0.3s ease-in">
+    <div class="flex items-center gap-2 mb-1">
+      <span class="opacity-60">${typeIcon}</span>
+      <span class="badge badge-xs badge-ghost text-[9px]">${sourceName}</span>
+      <span class="font-semibold text-xs">${escapeHtml(author)}</span>
+      <span class="text-[10px] opacity-40 ml-auto whitespace-nowrap">${ts}</span>
+      ${url}
+    </div>
+    <div class="text-xs opacity-80 whitespace-pre-wrap break-words">${escapeHtml(content)}</div>
+  </div>`
+
+  // Insert after the empty state (which is hidden), before existing entries
+  const firstEntry = feedList.querySelector('.feed-entry')
+  if (firstEntry) {
+    firstEntry.insertAdjacentHTML('beforebegin', entryHtml)
+  } else {
+    feedList.insertAdjacentHTML('beforeend', entryHtml)
+  }
 })
 
 // --- Theme switcher ---

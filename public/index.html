@@ -191,6 +191,14 @@
     }
     .insight-content pre code { background: none; border: none; padding: 0; }
 
+    /* Feed entry items */
+    .feed-entry {
+      padding: 10px 16px; border-bottom: 1px solid var(--color-base-200);
+      transition: background 0.15s;
+    }
+    .feed-entry:hover { background: color-mix(in oklch, var(--color-base-content) 3%, transparent); }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
     /* Mobile responsive */
     @media (max-width: 767px) {
       /* Layout */
@@ -248,6 +256,9 @@
     </div>
     <div class="flex-none gap-1 sm:gap-2">
       <span id="connection-dot" class="inline-block w-2 h-2 rounded-full bg-base-300" title="connecting..."></span>
+      <button id="btn-feed" class="btn btn-xs btn-ghost" title="Live feed (f)">
+        <i data-lucide="radio" class="w-3.5 h-3.5"></i>
+      </button>
       <button id="btn-insights" class="btn btn-xs btn-ghost" title="View insights (i)">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
       </button>
@@ -385,6 +396,35 @@
 
   </div> <!-- /list-view -->
 
+  <!-- Feed View -->
+  <div id="feed-view" class="h-[calc(100vh-2.5rem)] flex flex-col hidden">
+    <div class="px-3 sm:px-4 py-2 border-b border-base-300 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <button id="feed-back" class="btn btn-xs btn-ghost opacity-60" title="Back to sessions">
+          <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+        </button>
+        <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider whitespace-nowrap">Live Feed</span>
+        <span id="feed-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="dropdown dropdown-end">
+          <div id="feed-source-filter" tabindex="0" role="button" class="btn btn-xs btn-ghost text-[10px] gap-1" data-value="">All sources <span class="opacity-40">&#9662;</span></div>
+          <ul id="feed-source-menu" tabindex="0" class="dropdown-content menu menu-xs bg-base-200 border border-base-300 rounded-lg z-50 w-48 p-1 shadow-lg mt-1 max-h-48 overflow-y-auto"></ul>
+        </div>
+      </div>
+    </div>
+    <div id="feed-list" class="flex-1 overflow-y-auto">
+      <div id="feed-empty" class="flex items-center justify-center h-full">
+        <div class="text-center opacity-40">
+          <i data-lucide="radio" class="w-6 h-6 mx-auto mb-2 opacity-30"></i>
+          <p class="text-sm mb-1">No feed entries yet</p>
+          <p class="text-[10px]">Messages from data sources appear here in real-time</p>
+          <button onclick="switchView('integrations'); showIntegrationPanel('sources')" class="btn btn-xs btn-ghost mt-3 opacity-70">Add data source</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Insights View -->
   <div id="insights-view" class="h-[calc(100vh-2.5rem)] flex hidden">
     <!-- Insights List (Left Panel) -->
@@ -459,12 +499,109 @@
           <svg width="16" height="16" viewBox="0 0 127 127" fill="none"><path d="M27.2 80a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 0 80a13.6 13.6 0 0 1 13.6-13.6h13.6V80zm6.8 0a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6v34a13.6 13.6 0 0 1-13.6 13.6A13.6 13.6 0 0 1 34 114V80z" fill="#E01E5A"/><path d="M47.6 27.2A13.6 13.6 0 0 1 34 13.6 13.6 13.6 0 0 1 47.6 0 13.6 13.6 0 0 1 61.2 13.6v13.6H47.6zm0 6.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H13.6A13.6 13.6 0 0 1 0 47.6 13.6 13.6 0 0 1 13.6 34h34z" fill="#36C5F0"/><path d="M99.8 47.6a13.6 13.6 0 0 1 13.6-13.6 13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6H99.8V47.6zm-6.8 0a13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V13.6A13.6 13.6 0 0 1 79.4 0 13.6 13.6 0 0 1 93 13.6v34z" fill="#2EB67D"/><path d="M79.4 99.8a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.6 13.6 13.6 0 0 1-13.6-13.6V99.8h13.6zm0-6.8a13.6 13.6 0 0 1-13.6-13.6A13.6 13.6 0 0 1 79.4 66h34a13.6 13.6 0 0 1 13.6 13.6 13.6 13.6 0 0 1-13.6 13.4H79.4z" fill="#ECB22E"/></svg>
           <span class="text-xs font-medium">Slack</span>
         </div>
+        <div class="integration-nav-item px-3 py-3 cursor-pointer border-b border-base-200 border-l-3 border-l-transparent flex items-center gap-2" data-integration="sources">
+          <i data-lucide="rss" class="w-4 h-4 opacity-60"></i>
+          <span class="text-xs font-medium">Data Sources</span>
+        </div>
       </div>
     </div>
 
     <!-- Integrations Main Panel -->
     <div id="integrations-main" class="flex-1 overflow-y-auto">
-      <div class="max-w-2xl mx-auto px-5 sm:px-8 py-6">
+      <!-- Data Sources Panel (hidden by default) -->
+      <div id="sources-panel" class="hidden max-w-2xl mx-auto px-5 sm:px-8 py-6">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-base font-semibold">Data Sources</h2>
+          <button id="sources-add-btn" class="btn btn-sm btn-primary text-xs gap-1">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Source
+          </button>
+        </div>
+        <div id="sources-list" class="space-y-2 mb-6">
+          <div class="text-xs opacity-40 p-4 text-center">No data sources configured</div>
+        </div>
+        <!-- Add/Edit Source Form (hidden by default) -->
+        <div id="sources-form" class="hidden border border-base-300 rounded-lg p-4 mb-6">
+          <h3 id="sources-form-title" class="text-sm font-semibold mb-3">Add Data Source</h3>
+          <div class="space-y-3">
+            <div>
+              <label class="label text-xs py-0.5 font-medium">Name</label>
+              <input type="text" id="source-name" class="input input-sm input-bordered w-full text-xs" placeholder="Engineering Slack" />
+            </div>
+            <div>
+              <label class="label text-xs py-0.5 font-medium">Type</label>
+              <select id="source-type" class="select select-sm select-bordered w-full text-xs">
+                <option value="slack">Slack Channel</option>
+                <option value="discord">Discord Channel</option>
+                <option value="rss">RSS Feed</option>
+              </select>
+            </div>
+            <!-- Slack config -->
+            <div id="source-config-slack">
+              <label class="label text-xs py-0.5 font-medium">Channel ID</label>
+              <input type="text" id="source-slack-channel" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="C0123456789" />
+              <p class="text-[10px] opacity-40 mt-1">Uses the existing Slack bot connection</p>
+            </div>
+            <!-- Discord config -->
+            <div id="source-config-discord" class="hidden space-y-3">
+              <div>
+                <label class="label text-xs py-0.5 font-medium">Bot Token</label>
+                <input type="password" id="source-discord-token" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="Bot token" />
+              </div>
+              <div>
+                <label class="label text-xs py-0.5 font-medium">Guild ID</label>
+                <input type="text" id="source-discord-guild" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="Server ID" />
+              </div>
+              <div>
+                <label class="label text-xs py-0.5 font-medium">Channel ID</label>
+                <input type="text" id="source-discord-channel" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="Channel ID" />
+              </div>
+            </div>
+            <!-- RSS config -->
+            <div id="source-config-rss" class="hidden space-y-3">
+              <div>
+                <label class="label text-xs py-0.5 font-medium">Feed URL</label>
+                <input type="text" id="source-rss-url" class="input input-sm input-bordered w-full text-xs font-mono" placeholder="https://example.com/feed.xml" />
+              </div>
+              <div>
+                <label class="label text-xs py-0.5 font-medium">Poll Interval (minutes)</label>
+                <input type="number" id="source-rss-interval" class="input input-sm input-bordered w-24 text-xs" value="15" min="1" />
+              </div>
+            </div>
+            <!-- Field mapping (collapsible) -->
+            <details class="border border-base-300 rounded-lg overflow-hidden">
+              <summary class="px-3 py-2 text-xs font-medium cursor-pointer bg-base-200/30 opacity-60 hover:opacity-100">Advanced: Field Mapping</summary>
+              <div class="px-3 py-3 space-y-2">
+                <div class="grid grid-cols-2 gap-2">
+                  <div>
+                    <label class="label text-[10px] py-0">Author path</label>
+                    <input type="text" id="source-map-author" class="input input-xs input-bordered w-full text-[10px] font-mono" placeholder="auto" />
+                  </div>
+                  <div>
+                    <label class="label text-[10px] py-0">Content path</label>
+                    <input type="text" id="source-map-content" class="input input-xs input-bordered w-full text-[10px] font-mono" placeholder="auto" />
+                  </div>
+                  <div>
+                    <label class="label text-[10px] py-0">URL path</label>
+                    <input type="text" id="source-map-url" class="input input-xs input-bordered w-full text-[10px] font-mono" placeholder="auto" />
+                  </div>
+                  <div>
+                    <label class="label text-[10px] py-0">Timestamp path</label>
+                    <input type="text" id="source-map-timestamp" class="input input-xs input-bordered w-full text-[10px] font-mono" placeholder="auto" />
+                  </div>
+                </div>
+              </div>
+            </details>
+            <div class="flex gap-2 pt-1">
+              <button id="source-save-btn" class="btn btn-sm btn-primary text-xs">Save</button>
+              <button id="source-cancel-btn" class="btn btn-sm btn-ghost text-xs">Cancel</button>
+            </div>
+            <div id="source-save-status" class="text-xs hidden"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Slack Panel -->
+      <div id="slack-panel" class="max-w-2xl mx-auto px-5 sm:px-8 py-6">
         <!-- Status -->
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-base font-semibold">Slack Integration</h2>

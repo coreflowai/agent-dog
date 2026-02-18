@@ -91,6 +91,20 @@ export const integrationConfigs = sqliteTable('integration_configs', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+// Data source configs for external context (Slack channels, Discord, RSS feeds)
+export const dataSources = sqliteTable('data_sources', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  type: text('type').notNull(),            // 'slack' | 'discord' | 'rss'
+  enabled: integer('enabled').notNull().default(1),
+  config: text('config', { mode: 'json' }).notNull().default('{}'),
+  fieldMapping: text('field_mapping', { mode: 'json' }),
+  lastSyncAt: integer('last_sync_at'),
+  lastSyncError: text('last_sync_error'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+})
+
 // Track last analysis state per user+repo combination
 export const insightAnalysisState = sqliteTable('insight_analysis_state', {
   id: text('id').primaryKey(),                 // composite: `${userId}:${repoName || 'all'}`

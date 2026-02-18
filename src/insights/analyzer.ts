@@ -31,6 +31,10 @@ const tools: Anthropic.Tool[] = [
 Available tables:
 - sessions: id, source, start_time, last_event_time, status, metadata (JSON with user/git info), user_id
 - events: id, session_id, timestamp, source, category, type, role, text, tool_name, tool_input, tool_output, error, meta
+- data_sources: id, name, type, enabled, config, field_mapping, last_sync_at, last_sync_error, created_at, updated_at
+  (Config table for external data sources — Slack channels, Discord, RSS feeds)
+- src.source_entries: id, data_source_id, external_id, author, content, url, timestamp, ingested_at, meta
+  (External context from Slack, Discord, RSS — use src. prefix to query)
 
 The metadata JSON in sessions contains:
 - user: { name, email, osUser, githubUsername, githubId }
@@ -63,9 +67,10 @@ Returns results as JSON array. Only SELECT statements are allowed.`,
 ]
 
 /**
- * Execute the sql tool - read-only query against SQLite
+ * Execute the sql tool - read-only query against SQLite.
+ * Attaches sources.db as 'src' for cross-querying external context.
  */
-function executeSqlTool(query: string, dbPath: string): string {
+function executeSqlTool(query: string, dbPath: string, sourcesDbPath?: string): string {
   // Security: Only allow SELECT
   const normalized = query.trim().toUpperCase()
   if (!normalized.startsWith('SELECT')) {
@@ -81,6 +86,14 @@ function executeSqlTool(query: string, dbPath: string): string {
 
   const db = new Database(dbPath, { readonly: true })
   try {
+    // Attach sources.db so AI can cross-query external context
+    if (sourcesDbPath) {
+      try {
+        db.exec(`ATTACH DATABASE '${sourcesDbPath}' AS src`)
+      } catch {
+        // sources.db may not exist yet — that's fine
+      }
+    }
     const results = db.prepare(query).all()
     return JSON.stringify(results, null, 2)
   } finally {
@@ -200,6 +213,56 @@ WHERE category = 'error'
    ))
 ORDER BY timestamp DESC;
 \`\`\`
+
+## data_sources (main DB)
+Configuration table for external data sources.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT PK | Data source UUID |
+| name | TEXT | User-friendly label (e.g., "Engineering Slack") |
+| type | TEXT | 'slack', 'discord', or 'rss' |
+| enabled | INTEGER | 1 = enabled, 0 = disabled |
+| config | JSON | Type-specific config |
+| field_mapping | JSON | Custom field mapping overrides |
+| last_sync_at | INTEGER | Unix timestamp (ms) of last sync |
+| last_sync_error | TEXT | Last sync error message |
+| created_at | INTEGER | Unix timestamp (ms) |
+| updated_at | INTEGER | Unix timestamp (ms) |
+
+## src.source_entries (attached sources DB)
+External context messages from Slack, Discord, RSS feeds. Use \`src.\` prefix.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT PK | Entry UUID |
+| data_source_id | TEXT | References data_sources.id |
+| external_id | TEXT | Dedup key (Slack: channelId:ts, Discord: snowflake, RSS: guid) |
+| author | TEXT | Normalized author name |
+| content | TEXT | Message text body |
+| url | TEXT | Link to original |
+| timestamp | INTEGER | When original was created (ms) |
+| ingested_at | INTEGER | When we stored it (ms) |
+| meta | JSON | Raw source data |
+
+### Cross-query examples:
+
+\`\`\`sql
+-- Recent external context
+SELECT se.content, se.author, ds.name
+FROM src.source_entries se
+JOIN data_sources ds ON ds.id = se.data_source_id
+ORDER BY se.timestamp DESC LIMIT 50;
+\`\`\`
+
+\`\`\`sql
+-- What the team discussed about a specific topic
+SELECT se.content, se.author, ds.name
+FROM src.source_entries se
+JOIN data_sources ds ON ds.id = se.data_source_id
+WHERE se.content LIKE '%deploy%'
+ORDER BY se.timestamp DESC;
+\`\`\`
 `
 }
 
@@ -276,7 +339,13 @@ First, use the \`schema\` tool to understand the database structure, then perfor
    - Based on observed patterns and struggles
    - Practical, actionable recommendations
 
-6. **Questions for Humans** (Optional): If you encounter genuinely unclear patterns,
+6. **Check External Context** (Optional): If external data sources are configured,
+   query \`src.source_entries\` to see what the team has been discussing:
+   - Look for mentions of tools, repos, or patterns the user has been working with
+   - Cross-reference timestamps — did team discussions relate to the user's work?
+   - Note relevant external context that adds depth to your analysis
+
+7. **Questions for Humans** (Optional): If you encounter genuinely unclear patterns,
    you may ask questions to the team. Be human — write like a curious colleague,
    not a report generator. Only ask when:
    - You see ambiguous patterns that could be read multiple ways
@@ -347,7 +416,8 @@ export async function runAnalysis(
   userId: string,
   repoName: string | null,
   sinceTimestamp: number,
-  dbPath: string
+  dbPath: string,
+  sourcesDbPath?: string
 ): Promise<AnalysisResult> {
   const startTime = Date.now()
   const teamContext = buildTeamContext(dbPath)
@@ -477,7 +547,7 @@ export async function runAnalysis(
           try {
             if (block.name === 'sql') {
               const input = block.input as { query: string }
-              result = executeSqlTool(input.query, dbPath)
+              result = executeSqlTool(input.query, dbPath, sourcesDbPath)
             } else if (block.name === 'schema') {
               result = executeSchemaTools()
             } else {
@@ -542,9 +612,10 @@ export async function runRefinement(opts: {
   originalContent: string
   answers: Array<{ question: string; answer: string; answeredBy: string }>
   dbPath: string
+  sourcesDbPath?: string
 }): Promise<AnalysisResult> {
   const startTime = Date.now()
-  const { userId, originalContent, answers, dbPath } = opts
+  const { userId, originalContent, answers, dbPath, sourcesDbPath } = opts
 
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
@@ -644,7 +715,7 @@ Be specific, actionable, and integrate the human answers into a better analysis.
           let result: string
           try {
             if (block.name === 'sql') {
-              result = executeSqlTool((block.input as { query: string }).query, dbPath)
+              result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
             } else if (block.name === 'schema') {
               result = executeSchemaTools()
             } else {

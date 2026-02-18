@@ -129,6 +129,72 @@ export type SlackQuestion = {
   meta: Record<string, unknown>
 }
 
+// Data source types
+export type DataSourceType = 'slack' | 'discord' | 'rss'
+
+export type FieldMapping = {
+  author?: string
+  content?: string
+  url?: string
+  timestamp?: string
+}
+
+export type SlackSourceConfig = {
+  channelId: string
+}
+
+export type DiscordSourceConfig = {
+  botToken: string
+  guildId: string
+  channelId: string
+}
+
+export type RssSourceConfig = {
+  feedUrl: string
+  pollIntervalMinutes: number
+}
+
+export type DataSourceConfig = SlackSourceConfig | DiscordSourceConfig | RssSourceConfig
+
+export type DataSource = {
+  id: string
+  name: string
+  type: DataSourceType
+  enabled: boolean
+  config: DataSourceConfig
+  fieldMapping: FieldMapping | null
+  lastSyncAt: number | null
+  lastSyncError: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type SourceEntry = {
+  id: string
+  dataSourceId: string
+  externalId: string
+  author: string | null
+  content: string | null
+  url: string | null
+  timestamp: number
+  ingestedAt: number
+  meta: Record<string, unknown>
+}
+
+export type CreateDataSourceInput = {
+  name: string
+  type: DataSourceType
+  config: DataSourceConfig
+  fieldMapping?: FieldMapping
+  enabled?: boolean
+}
+
+export type UpdateDataSourceInput = {
+  name?: string
+  config?: DataSourceConfig
+  fieldMapping?: FieldMapping
+}
+
 export type CreateSlackQuestionInput = {
   question: string
   context?: string
