@@ -1875,10 +1875,51 @@ socket.on('insight:error', ({ userId, error }) => {
   showToast(`Insight analysis failed for ${userId}: ${error}`)
 })
 
+// --- Searchable Channel Dropdown helper ---
+function setupSearchableDropdown(inputEl, hiddenEl, dropdownEl, items, { formatItem, onSelect }) {
+  let open = false
+
+  function render(filter) {
+    const q = (filter || '').toLowerCase()
+    const filtered = q ? items.filter(i => formatItem(i).toLowerCase().includes(q)) : items
+    if (filtered.length === 0) {
+      dropdownEl.innerHTML = '<div class="px-3 py-2 text-xs opacity-40">No matches</div>'
+    } else {
+      dropdownEl.innerHTML = filtered.slice(0, 50).map((item, idx) =>
+        `<div class="px-3 py-1.5 text-xs cursor-pointer hover:bg-base-200 ${idx === 0 ? 'rounded-t-lg' : ''}" data-id="${item.id}">${formatItem(item)}</div>`
+      ).join('')
+    }
+    dropdownEl.classList.remove('hidden')
+    open = true
+
+    // Attach click handlers
+    dropdownEl.querySelectorAll('[data-id]').forEach(el => {
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        const selected = items.find(i => i.id === el.dataset.id)
+        if (selected) {
+          onSelect(selected)
+          hiddenEl.value = selected.id
+          dropdownEl.classList.add('hidden')
+          open = false
+        }
+      })
+    })
+  }
+
+  inputEl.addEventListener('focus', () => render(inputEl.value))
+  inputEl.addEventListener('input', () => render(inputEl.value))
+  inputEl.addEventListener('blur', () => {
+    setTimeout(() => { dropdownEl.classList.add('hidden'); open = false }, 150)
+  })
+}
+
 // --- Integrations: Slack config ---
 const slackBotTokenInput = document.getElementById('slack-bot-token')
 const slackAppTokenInput = document.getElementById('slack-app-token')
 const slackChannelInput = document.getElementById('slack-channel')
+const slackChannelIdInput = document.getElementById('slack-channel-id')
+const slackChannelDropdown = document.getElementById('slack-channel-dropdown')
 const slackSaveBtn = document.getElementById('slack-save-btn')
 const slackTestBtn = document.getElementById('slack-test-btn')
 const slackSaveStatus = document.getElementById('slack-save-status')
@@ -1886,6 +1927,37 @@ const slackStatusDot = document.getElementById('slack-status-dot')
 const slackStatusText = document.getElementById('slack-status-text')
 const slackToggleBotToken = document.getElementById('slack-toggle-bot-token')
 const slackToggleAppToken = document.getElementById('slack-toggle-app-token')
+
+// Slack channel cache
+let slackChannelsCache = null
+async function fetchSlackChannels() {
+  if (slackChannelsCache) return slackChannelsCache
+  try {
+    const res = await fetch('/api/integrations/slack/channels', { credentials: 'include' })
+    const data = await res.json()
+    if (data.channels && data.channels.length > 0) {
+      slackChannelsCache = data.channels
+      return data.channels
+    }
+  } catch {}
+  return null
+}
+
+async function initSlackChannelDropdown() {
+  const channels = await fetchSlackChannels()
+  if (!channels) return // Slack not connected — leave as plain text input
+  setupSearchableDropdown(
+    slackChannelInput, slackChannelIdInput, slackChannelDropdown,
+    channels,
+    {
+      formatItem: (ch) => `${ch.isPrivate ? '&#128274;' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
+      onSelect: (ch) => {
+        slackChannelInput.value = `#${ch.name}`
+        slackChannelIdInput.value = ch.id
+      },
+    }
+  )
+}
 
 function toggleTokenVisibility(input, btn) {
   if (input.type === 'password') {
@@ -1928,11 +2000,17 @@ async function loadSlackConfig() {
       slackBotTokenInput.value = data.botToken || ''
       slackAppTokenInput.value = data.appToken || ''
       slackChannelInput.value = data.channel || ''
+      slackChannelIdInput.value = data.channel || ''
       setSlackStatus(data.connected)
+      if (data.connected) {
+        slackChannelsCache = null // reset cache on config reload
+        initSlackChannelDropdown()
+      }
     } else {
       slackBotTokenInput.value = ''
       slackAppTokenInput.value = ''
       slackChannelInput.value = ''
+      slackChannelIdInput.value = ''
       setSlackStatus(false)
     }
   } catch {
@@ -1951,7 +2029,7 @@ slackSaveBtn.addEventListener('click', async () => {
       body: JSON.stringify({
         botToken: slackBotTokenInput.value.trim(),
         appToken: slackAppTokenInput.value.trim(),
-        channel: slackChannelInput.value.trim(),
+        channel: slackChannelIdInput.value.trim() || slackChannelInput.value.trim(),
       }),
     })
     const data = await res.json()
@@ -1998,14 +2076,145 @@ socket.on('slack:status', ({ connected }) => {
   if (currentView === 'integrations') setSlackStatus(connected)
 })
 
+// --- Integrations: Discord config ---
+const discordBotTokenInput = document.getElementById('discord-bot-token')
+const discordSaveBtn = document.getElementById('discord-save-btn')
+const discordTestBtn = document.getElementById('discord-test-btn')
+const discordSaveStatus = document.getElementById('discord-save-status')
+const discordStatusDot = document.getElementById('discord-status-dot')
+const discordStatusText = document.getElementById('discord-status-text')
+const discordToggleBotToken = document.getElementById('discord-toggle-bot-token')
+
+discordToggleBotToken.addEventListener('click', () => toggleTokenVisibility(discordBotTokenInput, discordToggleBotToken))
+
+function setDiscordStatus(connected) {
+  if (connected) {
+    discordStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-success'
+    discordStatusText.textContent = 'Connected'
+    discordStatusText.className = 'text-[10px] text-success'
+  } else {
+    discordStatusDot.className = 'inline-block w-2 h-2 rounded-full bg-base-300'
+    discordStatusText.textContent = 'Not connected'
+    discordStatusText.className = 'text-[10px] opacity-50'
+  }
+}
+
+function showDiscordSaveStatus(msg, isError) {
+  discordSaveStatus.textContent = msg
+  discordSaveStatus.className = `text-xs ${isError ? 'text-error' : 'text-success'}`
+  discordSaveStatus.classList.remove('hidden')
+  setTimeout(() => discordSaveStatus.classList.add('hidden'), 4000)
+}
+
+let discordConfigured = false
+async function loadDiscordConfig() {
+  try {
+    const res = await fetch('/api/integrations/discord', { credentials: 'include' })
+    const data = await res.json()
+    if (data.configured) {
+      discordBotTokenInput.value = data.botToken || ''
+      discordConfigured = true
+      // Test connection to show live status
+      testDiscordConnection(true)
+    } else {
+      discordBotTokenInput.value = ''
+      discordConfigured = false
+      setDiscordStatus(false)
+    }
+  } catch {
+    setDiscordStatus(false)
+  }
+}
+
+async function testDiscordConnection(silent) {
+  try {
+    const res = await fetch('/api/integrations/discord/test', { method: 'POST', credentials: 'include' })
+    const data = await res.json()
+    if (data.ok) {
+      setDiscordStatus(true)
+      if (!silent) showDiscordSaveStatus(`Connected as ${data.username}#${data.discriminator}`, false)
+    } else {
+      setDiscordStatus(false)
+      if (!silent) showDiscordSaveStatus(data.error || 'Connection failed', true)
+    }
+  } catch {
+    setDiscordStatus(false)
+    if (!silent) showDiscordSaveStatus('Network error', true)
+  }
+}
+
+discordSaveBtn.addEventListener('click', async () => {
+  discordSaveBtn.disabled = true
+  discordSaveBtn.textContent = 'Saving...'
+  try {
+    const res = await fetch('/api/integrations/discord', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ botToken: discordBotTokenInput.value.trim() }),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      showDiscordSaveStatus('Saved successfully', false)
+      discordConfigured = true
+      await loadDiscordConfig()
+    } else {
+      showDiscordSaveStatus(data.error || 'Failed to save', true)
+    }
+  } catch {
+    showDiscordSaveStatus('Network error', true)
+  }
+  discordSaveBtn.disabled = false
+  discordSaveBtn.textContent = 'Save'
+})
+
+discordTestBtn.addEventListener('click', async () => {
+  discordTestBtn.disabled = true
+  discordTestBtn.textContent = 'Testing...'
+  await testDiscordConnection(false)
+  discordTestBtn.disabled = false
+  discordTestBtn.textContent = 'Test Connection'
+})
+
+// --- Discord guilds/channels cache for data source form ---
+let discordGuildsCache = null
+let discordChannelsCache = {}
+
+async function fetchDiscordGuilds() {
+  if (discordGuildsCache) return discordGuildsCache
+  try {
+    const res = await fetch('/api/integrations/discord/guilds', { credentials: 'include' })
+    const data = await res.json()
+    if (data.guilds && data.guilds.length > 0) {
+      discordGuildsCache = data.guilds
+      return data.guilds
+    }
+  } catch {}
+  return null
+}
+
+async function fetchDiscordChannels(guildId) {
+  if (discordChannelsCache[guildId]) return discordChannelsCache[guildId]
+  try {
+    const res = await fetch(`/api/integrations/discord/channels?guildId=${guildId}`, { credentials: 'include' })
+    const data = await res.json()
+    if (data.channels && data.channels.length > 0) {
+      discordChannelsCache[guildId] = data.channels
+      return data.channels
+    }
+  } catch {}
+  return null
+}
+
 // --- Integration Nav Switching ---
 let currentIntegration = 'slack'
 
 function showIntegrationPanel(integration) {
   currentIntegration = integration
   const slackPanel = document.getElementById('slack-panel')
+  const discordPanel = document.getElementById('discord-panel')
   const sourcesPanel = document.getElementById('sources-panel')
-  if (!slackPanel || !sourcesPanel) return
+  if (!slackPanel || !discordPanel || !sourcesPanel) return
 
   // Update nav items
   document.querySelectorAll('.integration-nav-item').forEach(el => {
@@ -2015,12 +2224,18 @@ function showIntegrationPanel(integration) {
     el.classList.toggle('border-l-transparent', !isActive)
   })
 
+  // Hide all panels
+  slackPanel.classList.add('hidden')
+  discordPanel.classList.add('hidden')
+  sourcesPanel.classList.add('hidden')
+
   if (integration === 'slack') {
     slackPanel.classList.remove('hidden')
-    sourcesPanel.classList.add('hidden')
     loadSlackConfig()
+  } else if (integration === 'discord') {
+    discordPanel.classList.remove('hidden')
+    loadDiscordConfig()
   } else if (integration === 'sources') {
-    slackPanel.classList.add('hidden')
     sourcesPanel.classList.remove('hidden')
     loadSources()
   }
@@ -2056,7 +2271,12 @@ function showSourceConfigPanel(type) {
   configRss.classList.toggle('hidden', type !== 'rss')
 }
 
-sourceTypeSelect.addEventListener('change', () => showSourceConfigPanel(sourceTypeSelect.value))
+sourceTypeSelect.addEventListener('change', () => {
+  const type = sourceTypeSelect.value
+  showSourceConfigPanel(type)
+  if (type === 'slack') initSourceSlackChannelDropdown()
+  if (type === 'discord') initSourceDiscordGuilds()
+})
 
 async function loadSources() {
   try {
@@ -2144,6 +2364,12 @@ function openSourceForm(id) {
   sourcesFormTitle.textContent = id ? 'Edit Data Source' : 'Add Data Source'
   sourcesForm.classList.remove('hidden')
 
+  const srcSlackChannel = document.getElementById('source-slack-channel')
+  const srcSlackChannelId = document.getElementById('source-slack-channel-id')
+  const srcDiscordGuild = document.getElementById('source-discord-guild')
+  const srcDiscordChannel = document.getElementById('source-discord-channel')
+  const srcDiscordChannelId = document.getElementById('source-discord-channel-id')
+
   if (id) {
     const s = dataSources.find(s => s.id === id)
     if (!s) return
@@ -2152,11 +2378,11 @@ function openSourceForm(id) {
     showSourceConfigPanel(s.type)
     // Fill in config
     if (s.type === 'slack') {
-      document.getElementById('source-slack-channel').value = s.config?.channelId || ''
+      srcSlackChannel.value = s.config?.channelId || ''
+      srcSlackChannelId.value = s.config?.channelId || ''
+      initSourceSlackChannelDropdown()
     } else if (s.type === 'discord') {
-      document.getElementById('source-discord-token').value = s.config?.botToken || ''
-      document.getElementById('source-discord-guild').value = s.config?.guildId || ''
-      document.getElementById('source-discord-channel').value = s.config?.channelId || ''
+      initSourceDiscordGuilds(s.config?.guildId, s.config?.channelId)
     } else if (s.type === 'rss') {
       document.getElementById('source-rss-url').value = s.config?.feedUrl || ''
       document.getElementById('source-rss-interval').value = s.config?.pollIntervalMinutes || 15
@@ -2171,17 +2397,110 @@ function openSourceForm(id) {
     sourceNameInput.value = ''
     sourceTypeSelect.value = 'slack'
     showSourceConfigPanel('slack')
-    document.getElementById('source-slack-channel').value = ''
-    document.getElementById('source-discord-token').value = ''
-    document.getElementById('source-discord-guild').value = ''
-    document.getElementById('source-discord-channel').value = ''
+    srcSlackChannel.value = ''
+    srcSlackChannelId.value = ''
+    srcDiscordGuild.innerHTML = '<option value="">Select a server...</option>'
+    srcDiscordChannel.value = ''
+    srcDiscordChannel.disabled = true
+    srcDiscordChannel.placeholder = 'Select a server first...'
+    srcDiscordChannelId.value = ''
     document.getElementById('source-rss-url').value = ''
     document.getElementById('source-rss-interval').value = '15'
     document.getElementById('source-map-author').value = ''
     document.getElementById('source-map-content').value = ''
     document.getElementById('source-map-url').value = ''
     document.getElementById('source-map-timestamp').value = ''
+    initSourceSlackChannelDropdown()
+    initSourceDiscordGuilds()
   }
+}
+
+// --- Source form: Slack channel searchable dropdown ---
+async function initSourceSlackChannelDropdown() {
+  const channels = await fetchSlackChannels()
+  if (!channels) return
+  const input = document.getElementById('source-slack-channel')
+  const hidden = document.getElementById('source-slack-channel-id')
+  const dropdown = document.getElementById('source-slack-channel-dropdown')
+  setupSearchableDropdown(input, hidden, dropdown, channels, {
+    formatItem: (ch) => `${ch.isPrivate ? '&#128274;' : '#'}${ch.name} <span class="opacity-40">(${ch.numMembers} members)</span>`,
+    onSelect: (ch) => {
+      input.value = `#${ch.name}`
+      hidden.value = ch.id
+    },
+  })
+}
+
+// --- Source form: Discord guild dropdown + channel dropdown ---
+async function initSourceDiscordGuilds(preselectedGuildId, preselectedChannelId) {
+  const guildSelect = document.getElementById('source-discord-guild')
+  const channelInput = document.getElementById('source-discord-channel')
+  const channelHidden = document.getElementById('source-discord-channel-id')
+  const channelDropdown = document.getElementById('source-discord-channel-dropdown')
+
+  const guilds = await fetchDiscordGuilds()
+  guildSelect.innerHTML = '<option value="">Select a server...</option>'
+  if (!guilds) {
+    guildSelect.innerHTML = '<option value="">Discord not connected</option>'
+    return
+  }
+  guilds.forEach(g => {
+    const opt = document.createElement('option')
+    opt.value = g.id
+    opt.textContent = g.name
+    guildSelect.appendChild(opt)
+  })
+  if (preselectedGuildId) {
+    guildSelect.value = preselectedGuildId
+    await loadDiscordChannelsForGuild(preselectedGuildId, preselectedChannelId)
+  }
+
+  // Remove old listener by cloning
+  const newGuildSelect = guildSelect.cloneNode(true)
+  guildSelect.parentNode.replaceChild(newGuildSelect, guildSelect)
+  newGuildSelect.addEventListener('change', async () => {
+    const guildId = newGuildSelect.value
+    channelInput.value = ''
+    channelHidden.value = ''
+    if (!guildId) {
+      channelInput.disabled = true
+      channelInput.placeholder = 'Select a server first...'
+      return
+    }
+    await loadDiscordChannelsForGuild(guildId)
+  })
+}
+
+async function loadDiscordChannelsForGuild(guildId, preselectedChannelId) {
+  const channelInput = document.getElementById('source-discord-channel')
+  const channelHidden = document.getElementById('source-discord-channel-id')
+  const channelDropdown = document.getElementById('source-discord-channel-dropdown')
+
+  channelInput.disabled = true
+  channelInput.placeholder = 'Loading channels...'
+  const channels = await fetchDiscordChannels(guildId)
+  if (!channels) {
+    channelInput.placeholder = 'No channels found'
+    return
+  }
+  channelInput.disabled = false
+  channelInput.placeholder = 'Search channels...'
+
+  if (preselectedChannelId) {
+    const ch = channels.find(c => c.id === preselectedChannelId)
+    if (ch) {
+      channelInput.value = `#${ch.name}`
+      channelHidden.value = ch.id
+    }
+  }
+
+  setupSearchableDropdown(channelInput, channelHidden, channelDropdown, channels, {
+    formatItem: (ch) => `#${ch.name}`,
+    onSelect: (ch) => {
+      channelInput.value = `#${ch.name}`
+      channelHidden.value = ch.id
+    },
+  })
 }
 
 sourcesAddBtn.addEventListener('click', () => openSourceForm(null))
@@ -2197,15 +2516,16 @@ sourceSaveBtn.addEventListener('click', async () => {
 
   let config = {}
   if (type === 'slack') {
-    config = { channelId: document.getElementById('source-slack-channel').value.trim() }
-    if (!config.channelId) { showSourceSaveStatus('Channel ID is required', true); return }
+    const channelId = document.getElementById('source-slack-channel-id').value.trim() || document.getElementById('source-slack-channel').value.trim()
+    config = { channelId }
+    if (!config.channelId) { showSourceSaveStatus('Channel is required', true); return }
   } else if (type === 'discord') {
-    config = {
-      botToken: document.getElementById('source-discord-token').value.trim(),
-      guildId: document.getElementById('source-discord-guild').value.trim(),
-      channelId: document.getElementById('source-discord-channel').value.trim(),
-    }
-    if (!config.botToken || !config.channelId) { showSourceSaveStatus('Bot token and channel ID are required', true); return }
+    const guildSelect = document.getElementById('source-discord-guild')
+    const guildId = guildSelect.value || ''
+    const channelId = document.getElementById('source-discord-channel-id').value.trim() || document.getElementById('source-discord-channel').value.trim()
+    config = { guildId, channelId }
+    if (!config.guildId) { showSourceSaveStatus('Server is required', true); return }
+    if (!config.channelId) { showSourceSaveStatus('Channel is required', true); return }
   } else if (type === 'rss') {
     config = {
       feedUrl: document.getElementById('source-rss-url').value.trim(),

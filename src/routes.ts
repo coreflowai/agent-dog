@@ -589,6 +589,120 @@ export const AgentFlowPlugin = async () => {
       return json({ connected: slackBot?.bot?.isConnected() || false })
     }
 
+    // GET /api/integrations/slack/channels — list channels from connected bot
+    if (req.method === 'GET' && pathname === '/api/integrations/slack/channels') {
+      if (!slackBot?.bot?.isConnected()) {
+        return json({ channels: [], error: 'Not connected' })
+      }
+      try {
+        const channels = await slackBot.bot.listChannels()
+        return json({ channels })
+      } catch (err: any) {
+        return json({ channels: [], error: err.message ?? 'Failed to list channels' })
+      }
+    }
+
+    // --- Discord Integration Config ---
+
+    // GET /api/integrations/discord — get config (token masked)
+    if (req.method === 'GET' && pathname === '/api/integrations/discord') {
+      const config = getIntegrationConfig('discord')
+      if (!config) return json({ configured: false })
+      const c = config.config as Record<string, string>
+      return json({
+        configured: true,
+        botToken: c.botToken ? maskToken(c.botToken) : null,
+      })
+    }
+
+    // POST /api/integrations/discord — save bot token
+    if (req.method === 'POST' && pathname === '/api/integrations/discord') {
+      try {
+        const body = (await req.json()) as { botToken?: string }
+        const existing = getIntegrationConfig('discord')
+        const prev = (existing?.config || {}) as Record<string, string>
+        const config = {
+          botToken: body.botToken && !body.botToken.includes('•') ? body.botToken : prev.botToken || '',
+        }
+        setIntegrationConfig('discord', config)
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to save config' }, 500)
+      }
+    }
+
+    // POST /api/integrations/discord/test — test bot token via Discord REST
+    if (req.method === 'POST' && pathname === '/api/integrations/discord/test') {
+      const config = getIntegrationConfig('discord')
+      const botToken = (config?.config as any)?.botToken
+      if (!botToken) return json({ ok: false, error: 'Bot token not configured' })
+      try {
+        const res = await fetch('https://discord.com/api/v10/users/@me', {
+          headers: { Authorization: `Bot ${botToken}` },
+        })
+        const data = await res.json() as any
+        if (!res.ok) return json({ ok: false, error: data.message || 'Auth failed' })
+        return json({ ok: true, username: data.username, discriminator: data.discriminator, id: data.id })
+      } catch (err: any) {
+        return json({ ok: false, error: err.message || 'Network error' })
+      }
+    }
+
+    // GET /api/integrations/discord/guilds — list guilds the bot is in
+    if (req.method === 'GET' && pathname === '/api/integrations/discord/guilds') {
+      const config = getIntegrationConfig('discord')
+      const botToken = (config?.config as any)?.botToken
+      if (!botToken) return json({ guilds: [], error: 'Bot token not configured' })
+      try {
+        const res = await fetch('https://discord.com/api/v10/users/@me/guilds', {
+          headers: { Authorization: `Bot ${botToken}` },
+        })
+        if (!res.ok) {
+          const data = await res.json() as any
+          return json({ guilds: [], error: data.message || 'Failed to list guilds' })
+        }
+        const guilds = (await res.json() as any[]).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+        }))
+        return json({ guilds })
+      } catch (err: any) {
+        return json({ guilds: [], error: err.message || 'Network error' })
+      }
+    }
+
+    // GET /api/integrations/discord/channels?guildId=X — list text channels in a guild
+    if (req.method === 'GET' && pathname === '/api/integrations/discord/channels') {
+      const guildId = url.searchParams.get('guildId')
+      if (!guildId) return json({ channels: [], error: 'Missing guildId parameter' })
+      const config = getIntegrationConfig('discord')
+      const botToken = (config?.config as any)?.botToken
+      if (!botToken) return json({ channels: [], error: 'Bot token not configured' })
+      try {
+        const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/channels`, {
+          headers: { Authorization: `Bot ${botToken}` },
+        })
+        if (!res.ok) {
+          const data = await res.json() as any
+          return json({ channels: [], error: data.message || 'Failed to list channels' })
+        }
+        const allChannels = await res.json() as any[]
+        // type 0 = text channel
+        const channels = allChannels
+          .filter((c: any) => c.type === 0)
+          .map((c: any) => ({
+            id: c.id,
+            name: c.name,
+            position: c.position,
+          }))
+          .sort((a: any, b: any) => a.position - b.position)
+        return json({ channels })
+      } catch (err: any) {
+        return json({ channels: [], error: err.message || 'Network error' })
+      }
+    }
+
     // --- Data Sources API ---
 
     // GET /api/sources — list all data sources with entry counts

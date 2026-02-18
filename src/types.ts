@@ -144,7 +144,6 @@ export type SlackSourceConfig = {
 }
 
 export type DiscordSourceConfig = {
-  botToken: string
   guildId: string
   channelId: string
 }

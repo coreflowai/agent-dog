@@ -15,6 +15,13 @@ export type SlackBotOptions = {
   sourcesDbPath?: string
 }
 
+export type SlackChannel = {
+  id: string
+  name: string
+  isPrivate: boolean
+  numMembers: number
+}
+
 export type SlackBot = {
   start: () => Promise<void>
   stop: () => Promise<void>
@@ -23,6 +30,7 @@ export type SlackBot = {
   replyInThread: (channelId: string, threadTs: string, text: string) => Promise<string | null>
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
+  listChannels: () => Promise<SlackChannel[]>
   registerChannelListener: (channelId: string, cb: (msg: any) => void) => void
   unregisterChannelListener: (channelId: string) => void
 }
@@ -425,6 +433,30 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     return { ok: false, error: result.error || 'Connection failed' }
   }
 
+  async function listChannels(): Promise<SlackChannel[]> {
+    if (!app) return []
+    const channels: SlackChannel[] = []
+    let cursor: string | undefined
+    do {
+      const result = await app.client.conversations.list({
+        types: 'public_channel,private_channel',
+        exclude_archived: true,
+        limit: 200,
+        cursor,
+      })
+      for (const ch of result.channels || []) {
+        channels.push({
+          id: ch.id!,
+          name: ch.name || ch.id!,
+          isPrivate: ch.is_private || false,
+          numMembers: ch.num_members || 0,
+        })
+      }
+      cursor = result.response_metadata?.next_cursor || undefined
+    } while (cursor)
+    return channels
+  }
+
   return {
     start: async () => {
       // Validate bot token with plain fetch first — if invalid, bail early
@@ -455,6 +487,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       app = null
     },
     postQuestion,
+    listChannels,
     postNotification: async (message: string) => {
       if (!app) return
       try {
