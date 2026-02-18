@@ -4,7 +4,7 @@ import { EventEmitter } from 'events'
 import { initDb, listSessions, getSessionEventCount } from './db'
 import { createRouter } from './routes'
 import { createAuth, migrateAuth, authenticateRequest, type Auth } from './auth'
-import { createInsightScheduler, type InsightScheduler } from './insights'
+import { createInsightScheduler, type InsightScheduler, createCuriosityScheduler, type CuriosityScheduler } from './insights'
 import { createSlackBot, type SlackBot } from './slack'
 import { getIntegrationConfig } from './db/slack'
 import { initSourcesDb } from './db/sources'
@@ -110,6 +110,9 @@ export function createServer(options: ServerOptions = {}) {
   // Insight analysis scheduler
   let insightScheduler: InsightScheduler | null = null
 
+  // Curiosity scheduler (proactive questions)
+  let curiosityScheduler: CuriosityScheduler | null = null
+
   // Slack bot integration
   let slackBot: SlackBot | null = null
 
@@ -184,6 +187,14 @@ export function createServer(options: ServerOptions = {}) {
       dbPath: resolvedDbPath,
       sourcesDbPath,
       runOnStart: insightsRunOnStart,
+      slackBot: slackBotRef,
+      internalBus,
+    })
+
+    curiosityScheduler = createCuriosityScheduler({
+      io,
+      dbPath: resolvedDbPath,
+      sourcesDbPath,
       slackBot: slackBotRef,
       internalBus,
     })
@@ -327,6 +338,7 @@ export function createServer(options: ServerOptions = {}) {
     url: `http://localhost:${server.port}`,
     close: async () => {
       insightScheduler?.stop()
+      curiosityScheduler?.stop()
       await sourceManager.stop()
       if (slackBot) {
         try { await slackBot.stop() } catch {}

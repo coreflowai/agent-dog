@@ -130,7 +130,7 @@ export type SlackQuestion = {
 }
 
 // Data source types
-export type DataSourceType = 'slack' | 'discord' | 'rss'
+export type DataSourceType = 'slack' | 'discord' | 'rss' | 'agent'
 
 export type FieldMapping = {
   author?: string
@@ -154,7 +154,9 @@ export type RssSourceConfig = {
   pollIntervalMinutes: number
 }
 
-export type DataSourceConfig = SlackSourceConfig | DiscordSourceConfig | RssSourceConfig
+export type AgentSourceConfig = Record<string, never>
+
+export type DataSourceConfig = SlackSourceConfig | DiscordSourceConfig | RssSourceConfig | AgentSourceConfig
 
 export type DataSource = {
   id: string
