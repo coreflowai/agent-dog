@@ -23,7 +23,7 @@ export type AnalysisResult = {
 }
 
 // Tool definitions for Claude
-const tools: Anthropic.Tool[] = [
+export const tools: Anthropic.Tool[] = [
   {
     name: 'sql',
     description: `Execute read-only SQL queries against the AgentFlow SQLite database.
@@ -70,7 +70,7 @@ Returns results as JSON array. Only SELECT statements are allowed.`,
  * Execute the sql tool - read-only query against SQLite.
  * Attaches sources.db as 'src' for cross-querying external context.
  */
-function executeSqlTool(query: string, dbPath: string, sourcesDbPath?: string): string {
+export function executeSqlTool(query: string, dbPath: string, sourcesDbPath?: string): string {
   // Security: Only allow SELECT
   const normalized = query.trim().toUpperCase()
   if (!normalized.startsWith('SELECT')) {
@@ -104,7 +104,7 @@ function executeSqlTool(query: string, dbPath: string, sourcesDbPath?: string): 
 /**
  * Execute the schema tool - return database documentation
  */
-function executeSchemaTools(): string {
+export function executeSchemaTools(): string {
   return `# AgentFlow Database Schema
 
 ## sessions

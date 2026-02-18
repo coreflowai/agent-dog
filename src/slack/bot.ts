@@ -3,6 +3,7 @@ import type { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
 import { getQuestion, updateQuestionPosted, updateQuestionAnswer, findQuestionByThread, addThreadReply } from '../db/slack'
 import type { SlackQuestion, SlackQuestionOption } from '../types'
+import { createChatHandler, chunkForSlack, type ChatHandler } from './chat'
 
 export type SlackBotOptions = {
   botToken: string
@@ -10,6 +11,8 @@ export type SlackBotOptions = {
   channel: string
   io?: SocketIOServer
   internalBus?: EventEmitter
+  dbPath?: string
+  sourcesDbPath?: string
 }
 
 export type SlackBot = {
@@ -38,10 +41,16 @@ async function validateSlackToken(botToken: string): Promise<{ ok: boolean; erro
 }
 
 export function createSlackBot(options: SlackBotOptions): SlackBot {
-  const { botToken, appToken, channel, io, internalBus } = options
+  const { botToken, appToken, channel, io, internalBus, dbPath, sourcesDbPath } = options
   let connected = false
   let app: App | null = null
   const channelListeners = new Map<string, (msg: any) => void>()
+
+  // Initialize chat handler if DB paths are available
+  let chatHandler: ChatHandler | null = null
+  if (dbPath) {
+    chatHandler = createChatHandler({ dbPath, sourcesDbPath })
+  }
 
   function setupListeners(a: App) {
     // Catch async errors from Socket Mode / Web API
@@ -51,10 +60,59 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if (io) io.emit('slack:status', { connected: false })
     })
 
-    // @mention handler — react with :eyes: and reply if outside a question thread
+    // @mention handler — start a chat thread with AI response
     a.event('app_mention', async ({ event, client }) => {
       try {
         await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'eyes' })
+      } catch {}
+
+      if (!chatHandler) return
+
+      // Strip the @mention from the text
+      const text = (event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim()
+      if (!text) return
+
+      const threadTs = event.thread_ts || event.ts
+      chatHandler.registerThread(threadTs)
+
+      // Resolve user name
+      let userName: string | undefined
+      if (event.user) {
+        try {
+          const userInfo = await client.users.info({ user: event.user })
+          userName = userInfo.user?.real_name || userInfo.user?.name
+        } catch {}
+      }
+
+      // Show hourglass while processing
+      try {
+        await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'hourglass' })
+      } catch {}
+
+      try {
+        const reply = await chatHandler.handleMessage(threadTs, text, userName)
+        const chunks = chunkForSlack(reply)
+        for (const chunk of chunks) {
+          await client.chat.postMessage({
+            channel: event.channel,
+            thread_ts: threadTs,
+            text: chunk,
+          })
+        }
+      } catch (err) {
+        console.error('[SlackBot] Chat handler error:', err)
+        try {
+          await client.chat.postMessage({
+            channel: event.channel,
+            thread_ts: threadTs,
+            text: 'Sorry, I ran into an error processing your request.',
+          })
+        } catch {}
+      }
+
+      // Remove hourglass
+      try {
+        await client.reactions.remove({ channel: event.channel, timestamp: event.ts, name: 'hourglass' })
       } catch {}
     })
 
@@ -72,6 +130,54 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if (!('channel' in message) || !message.channel) return
       if ('bot_id' in message && message.bot_id) return
       if (!('text' in message) || !message.text) return
+
+      // Route chat thread follow-ups (no @mention needed)
+      if (chatHandler && chatHandler.isChatThread(message.thread_ts)) {
+        // React to acknowledge
+        try {
+          if ('ts' in message && message.ts) {
+            await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
+          }
+        } catch {}
+
+        let userName: string | undefined
+        if ('user' in message && message.user) {
+          try {
+            const userInfo = await client.users.info({ user: message.user })
+            userName = userInfo.user?.real_name || userInfo.user?.name
+          } catch {}
+        }
+
+        // Show hourglass
+        try {
+          if ('ts' in message && message.ts) {
+            await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'hourglass' })
+          }
+        } catch {}
+
+        try {
+          const reply = await chatHandler.handleMessage(message.thread_ts, message.text, userName)
+          const chunks = chunkForSlack(reply)
+          for (const chunk of chunks) {
+            await client.chat.postMessage({
+              channel: message.channel,
+              thread_ts: message.thread_ts,
+              text: chunk,
+            })
+          }
+        } catch (err) {
+          console.error('[SlackBot] Chat follow-up error:', err)
+        }
+
+        // Remove hourglass
+        try {
+          if ('ts' in message && message.ts) {
+            await client.reactions.remove({ channel: message.channel, timestamp: message.ts, name: 'hourglass' })
+          }
+        } catch {}
+
+        return // Don't fall through to question-thread handling
+      }
 
       const question = findQuestionByThread(message.channel, message.thread_ts)
       if (!question) return
@@ -343,6 +449,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     stop: async () => {
       connected = false
       if (io) io.emit('slack:status', { connected: false })
+      if (chatHandler) chatHandler.cleanup()
       if (app) await app.stop()
       app = null
     },

@@ -132,7 +132,7 @@ export function createServer(options: ServerOptions = {}) {
     if (slackBot) {
       try { await slackBot.stop() } catch {}
     }
-    slackBot = createSlackBot({ ...config, io, internalBus })
+    slackBot = createSlackBot({ ...config, io, internalBus, dbPath: resolvedDbPath, sourcesDbPath })
     try {
       await slackBot.start()
     } catch (err) {
