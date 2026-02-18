@@ -280,6 +280,24 @@ export function countUserEventsSince(
   return countResult?.count ?? 0
 }
 
+export function countUserSessionsSince(
+  userId: string,
+  sinceTimestamp: number
+): number {
+  const db = getDb()
+
+  const [countResult] = db
+    .select({ count: sql<number>`count(*)` })
+    .from(sessions)
+    .where(and(
+      eq(sessions.userId, userId),
+      gt(sessions.lastEventTime, sinceTimestamp)
+    ))
+    .all()
+
+  return countResult?.count ?? 0
+}
+
 /**
  * Get the latest insight for a user+repo combination.
  */

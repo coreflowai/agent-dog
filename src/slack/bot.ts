@@ -43,10 +43,6 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
   let app: App | null = null
   const channelListeners = new Map<string, (msg: any) => void>()
 
-  // Debounce timers for thread reply accumulation
-  const threadDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
-  const THREAD_DEBOUNCE_MS = 2 * 60 * 1000 // 2 minutes after last reply
-
   function setupListeners(a: App) {
     // Catch async errors from Socket Mode / Web API
     a.error(async (error) => {
@@ -62,7 +58,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       } catch {}
     })
 
-    // Thread reply listener — accumulates replies with debounce
+    // Thread reply listener — accumulates replies and asks permission to refine
     a.message(async ({ message, client }) => {
       // Dispatch to registered channel listeners (for data source ingestion)
       if ('channel' in message && message.channel) {
@@ -108,17 +104,44 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
       console.log(`[SlackBot] Thread reply accumulated for question ${question.id} from ${userName || 'unknown'}`)
 
-      // Reset debounce timer — fires thread:ready after quiet period
-      const existing = threadDebounceTimers.get(question.id)
-      if (existing) clearTimeout(existing)
-
-      threadDebounceTimers.set(question.id, setTimeout(() => {
-        threadDebounceTimers.delete(question.id)
-        console.log(`[SlackBot] Debounce fired for question ${question.id}, emitting thread:ready`)
-        if (internalBus) {
-          internalBus.emit('thread:ready', { questionId: question.id })
-        }
-      }, THREAD_DEBOUNCE_MS))
+      // Instant reply with a "Refine insight" button
+      try {
+        await client.chat.postMessage({
+          channel: message.channel,
+          thread_ts: message.thread_ts,
+          text: `Got it, thanks ${userName ? userName : ''}! Want me to update the insight with your feedback?`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: `Got it, thanks${userName ? ` ${userName}` : ''}! Want me to update the insight with your feedback?`,
+              },
+            },
+            {
+              type: 'actions',
+              block_id: `refine_${question.id}`,
+              elements: [
+                {
+                  type: 'button',
+                  text: { type: 'plain_text', text: 'Refine insight' },
+                  action_id: 'refine_insight',
+                  value: question.id,
+                  style: 'primary',
+                },
+                {
+                  type: 'button',
+                  text: { type: 'plain_text', text: 'Not now' },
+                  action_id: 'refine_skip',
+                  value: question.id,
+                },
+              ],
+            },
+          ],
+        })
+      } catch (err) {
+        console.error('[SlackBot] Failed to post refine prompt:', err)
+      }
     })
 
     // Button click listener — matches action IDs starting with slack_q_
@@ -179,6 +202,53 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       // Button clicks are immediate — trigger refinement directly
       if (updated && internalBus) {
         internalBus.emit('thread:ready', { questionId })
+      }
+    })
+
+    // "Refine insight" button — user approved refinement
+    a.action('refine_insight', async ({ action, body, ack, client }) => {
+      await ack()
+      if (action.type !== 'button') return
+      const questionId = action.value || ''
+
+      // Update the prompt message to show processing
+      const msgBody = body as any
+      if (msgBody.channel?.id && msgBody.message?.ts) {
+        try {
+          await client.chat.update({
+            channel: msgBody.channel.id,
+            ts: msgBody.message.ts,
+            text: ':hourglass_flowing_sand: Refining insight with your feedback...',
+            blocks: [{
+              type: 'section',
+              text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: Refining insight with your feedback...' },
+            }],
+          })
+        } catch {}
+      }
+
+      console.log(`[SlackBot] Refine approved for question ${questionId}`)
+      if (internalBus) {
+        internalBus.emit('thread:ready', { questionId })
+      }
+    })
+
+    // "Not now" button — dismiss the refine prompt
+    a.action('refine_skip', async ({ action, body, ack, client }) => {
+      await ack()
+      const msgBody = body as any
+      if (msgBody.channel?.id && msgBody.message?.ts) {
+        try {
+          await client.chat.update({
+            channel: msgBody.channel.id,
+            ts: msgBody.message.ts,
+            text: 'No problem — feedback saved for later.',
+            blocks: [{
+              type: 'section',
+              text: { type: 'mrkdwn', text: 'No problem — feedback saved for later.' },
+            }],
+          })
+        } catch {}
       }
     })
   }

@@ -10,13 +10,14 @@ import {
   updateInsight,
   getInsight,
   countUserEventsSince,
+  countUserSessionsSince,
 } from '../db/insights'
 import { addQuestion, getQuestion, getQuestionsByInsightId, markQuestionAnsweredFromReplies } from '../db/slack'
 import type { SlackBot } from '../slack'
 import type { InsightMeta } from '../types'
 
-// Minimum events required to trigger analysis
-const MIN_EVENTS_FOR_ANALYSIS = 5
+// Minimum sessions required to trigger analysis
+const MIN_SESSIONS_FOR_ANALYSIS = 10
 
 // Default analysis window: 30 minutes
 const DEFAULT_ANALYSIS_WINDOW_MS = 30 * 60 * 1000
@@ -35,8 +36,8 @@ export type InsightSchedulerOptions = {
   cronExpression?: string
   /** Whether to run immediately on start */
   runOnStart?: boolean
-  /** Minimum events required to trigger analysis */
-  minEventsForAnalysis?: number
+  /** Minimum sessions required to trigger analysis */
+  minSessionsForAnalysis?: number
   /** Reference to Slack bot for posting questions */
   slackBot?: { bot: SlackBot | null; restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }
   /** Internal event bus for cross-component communication */
@@ -63,9 +64,9 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
     io,
     dbPath,
     sourcesDbPath,
-    cronExpression = '0 */5 * * *', // Every 5 hours
+    cronExpression = '0 * * * *', // Every hour
     runOnStart = false,
-    minEventsForAnalysis = MIN_EVENTS_FOR_ANALYSIS,
+    minSessionsForAnalysis = MIN_SESSIONS_FOR_ANALYSIS,
     slackBot,
     internalBus,
     maxQuestionRounds = DEFAULT_MAX_QUESTION_ROUNDS,
@@ -167,7 +168,7 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
 
       for (const user of users) {
         try {
-          await analyzeUser(user.userId, minEventsForAnalysis, dbPath, io, slackBot)
+          await analyzeUser(user.userId, minSessionsForAnalysis, dbPath, io, slackBot)
         } catch (error) {
           console.error(`[InsightScheduler] Error analyzing ${user.userId}:`, error)
         }
@@ -234,7 +235,7 @@ function buildRefinementSummary(result: AnalysisResult): string {
  */
 async function analyzeUser(
   userId: string,
-  minEvents: number,
+  minSessions: number,
   dbPath: string,
   io: SocketIOServer,
   slackBot?: { bot: SlackBot | null; restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> },
@@ -245,15 +246,15 @@ async function analyzeUser(
   const state = getAnalysisState(userId, null)
   const sinceTimestamp = state?.lastEventTimestamp ?? 0
 
-  // Count new events since last analysis (across all repos)
-  const newEventCount = countUserEventsSince(userId, sinceTimestamp)
+  // Count new sessions since last analysis
+  const newSessionCount = countUserSessionsSince(userId, sinceTimestamp)
 
-  if (newEventCount < minEvents) {
-    console.log(`[InsightScheduler] Skipping ${userId}: only ${newEventCount} new events (need ${minEvents})`)
+  if (newSessionCount < minSessions) {
+    console.log(`[InsightScheduler] Skipping ${userId}: only ${newSessionCount} new sessions (need ${minSessions})`)
     return
   }
 
-  console.log(`[InsightScheduler] Running analysis for ${userId} with ${newEventCount} new events`)
+  console.log(`[InsightScheduler] Running analysis for ${userId} with ${newSessionCount} new sessions`)
 
   // Run the analysis (repoName = null to analyze all repos)
   const analysisWindowStart = sinceTimestamp || Date.now() - DEFAULT_ANALYSIS_WINDOW_MS
