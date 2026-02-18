@@ -100,12 +100,13 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
           })
         }
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err)
         console.error('[SlackBot] Chat handler error:', err)
         try {
           await client.chat.postMessage({
             channel: event.channel,
             thread_ts: threadTs,
-            text: 'Sorry, I ran into an error processing your request.',
+            text: `Something went wrong: \`${errMsg}\``,
           })
         } catch {}
       }

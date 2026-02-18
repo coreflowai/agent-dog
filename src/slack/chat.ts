@@ -182,8 +182,9 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
       conv.messages.push({ role: 'assistant', content: 'I ran into a limit while processing. Could you rephrase your question?' })
       return 'I ran into a limit while processing. Could you rephrase your question?'
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err)
       console.error('[ChatHandler] Error:', err)
-      return 'Sorry, something went wrong while processing your request.'
+      return `Something went wrong: \`${errMsg}\``
     }
   }
 
