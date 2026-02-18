@@ -141,6 +141,63 @@ export function getQuestionsByInsightId(insightId: string): SlackQuestion[] {
   return rows.map(rowToQuestion)
 }
 
+// --- Thread reply accumulation ---
+
+export type ThreadReply = {
+  text: string
+  userId: string
+  userName?: string
+  ts: string
+  receivedAt: number
+}
+
+export function addThreadReply(questionId: string, reply: ThreadReply): void {
+  const db = getDb()
+  const row = db.select().from(slackQuestions).where(eq(slackQuestions.id, questionId)).get()
+  if (!row) return
+
+  const meta = (row.meta ?? {}) as Record<string, unknown>
+  const replies = (meta.threadReplies ?? []) as ThreadReply[]
+  replies.push(reply)
+
+  db.update(slackQuestions)
+    .set({ meta: { ...meta, threadReplies: replies } })
+    .where(eq(slackQuestions.id, questionId))
+    .run()
+}
+
+export function getThreadReplies(questionId: string): ThreadReply[] {
+  const q = getQuestion(questionId)
+  if (!q) return []
+  return ((q.meta as any)?.threadReplies ?? []) as ThreadReply[]
+}
+
+export function markQuestionAnsweredFromReplies(questionId: string): void {
+  const db = getDb()
+  const q = getQuestion(questionId)
+  if (!q) return
+
+  const replies = ((q.meta as any)?.threadReplies ?? []) as ThreadReply[]
+  if (replies.length === 0) return
+
+  const combinedAnswer = replies
+    .map(r => `${r.userName || r.userId}: ${r.text}`)
+    .join('\n')
+  const firstReply = replies[0]
+
+  db.update(slackQuestions)
+    .set({
+      status: 'answered',
+      answer: combinedAnswer,
+      answeredBy: firstReply.userId,
+      answeredByName: firstReply.userName ?? null,
+      answeredAt: Date.now(),
+      answerSource: 'thread',
+    })
+    .where(eq(slackQuestions.id, questionId))
+    .run()
+}
+
 export function findQuestionByThread(channelId: string, messageTs: string): SlackQuestion | null {
   const db = getDb()
   const row = db.select().from(slackQuestions)

@@ -1,7 +1,7 @@
 import { App } from '@slack/bolt'
 import type { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
-import { getQuestion, updateQuestionPosted, updateQuestionAnswer, findQuestionByThread } from '../db/slack'
+import { getQuestion, updateQuestionPosted, updateQuestionAnswer, findQuestionByThread, addThreadReply } from '../db/slack'
 import type { SlackQuestion, SlackQuestionOption } from '../types'
 
 export type SlackBotOptions = {
@@ -17,6 +17,7 @@ export type SlackBot = {
   stop: () => Promise<void>
   postQuestion: (questionId: string) => Promise<SlackQuestion | null>
   postNotification: (message: string) => Promise<void>
+  replyInThread: (channelId: string, threadTs: string, text: string) => Promise<string | null>
   isConnected: () => boolean
   testConnection: () => Promise<{ ok: boolean; team?: string; user?: string; error?: string }>
   registerChannelListener: (channelId: string, cb: (msg: any) => void) => void
@@ -42,6 +43,10 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
   let app: App | null = null
   const channelListeners = new Map<string, (msg: any) => void>()
 
+  // Debounce timers for thread reply accumulation
+  const threadDebounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  const THREAD_DEBOUNCE_MS = 2 * 60 * 1000 // 2 minutes after last reply
+
   function setupListeners(a: App) {
     // Catch async errors from Socket Mode / Web API
     a.error(async (error) => {
@@ -50,7 +55,14 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if (io) io.emit('slack:status', { connected: false })
     })
 
-    // Thread reply listener — matches replies to question threads
+    // @mention handler — react with :eyes: and reply if outside a question thread
+    a.event('app_mention', async ({ event, client }) => {
+      try {
+        await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'eyes' })
+      } catch {}
+    })
+
+    // Thread reply listener — accumulates replies with debounce
     a.message(async ({ message, client }) => {
       // Dispatch to registered channel listeners (for data source ingestion)
       if ('channel' in message && message.channel) {
@@ -67,16 +79,16 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
       const question = findQuestionByThread(message.channel, message.thread_ts)
       if (!question) return
+      if (question.status === 'expired') return
 
-      // Always react to acknowledge the reply
+      // React to acknowledge the reply
       try {
         if ('ts' in message && message.ts) {
           await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
         }
       } catch {}
 
-      if (question.status === 'answered') return
-
+      // Resolve user name
       let userName: string | undefined
       if ('user' in message && message.user) {
         try {
@@ -85,23 +97,28 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         } catch {}
       }
 
-      updateQuestionAnswer(question.id, {
-        answer: message.text,
-        answeredBy: ('user' in message ? message.user : undefined) || 'unknown',
-        answeredByName: userName,
-        answerSource: 'thread',
-        threadTs: ('ts' in message ? message.ts : undefined) as string | undefined,
+      // Accumulate reply in DB (meta.threadReplies)
+      addThreadReply(question.id, {
+        text: message.text,
+        userId: ('user' in message ? message.user : undefined) || 'unknown',
+        userName,
+        ts: ('ts' in message ? message.ts : undefined) as string,
+        receivedAt: Date.now(),
       })
 
-      console.log(`[SlackBot] Answer received for question ${question.id} from ${userName || 'unknown'}`)
+      console.log(`[SlackBot] Thread reply accumulated for question ${question.id} from ${userName || 'unknown'}`)
 
-      const updated = getQuestion(question.id)
-      if (updated && io) {
-        io.emit('slack:question:answered', updated)
-      }
-      if (updated && internalBus) {
-        internalBus.emit('question:answered', updated)
-      }
+      // Reset debounce timer — fires thread:ready after quiet period
+      const existing = threadDebounceTimers.get(question.id)
+      if (existing) clearTimeout(existing)
+
+      threadDebounceTimers.set(question.id, setTimeout(() => {
+        threadDebounceTimers.delete(question.id)
+        console.log(`[SlackBot] Debounce fired for question ${question.id}, emitting thread:ready`)
+        if (internalBus) {
+          internalBus.emit('thread:ready', { questionId: question.id })
+        }
+      }, THREAD_DEBOUNCE_MS))
     })
 
     // Button click listener — matches action IDs starting with slack_q_
@@ -159,8 +176,9 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if (updated && io) {
         io.emit('slack:question:answered', updated)
       }
+      // Button clicks are immediate — trigger refinement directly
       if (updated && internalBus) {
-        internalBus.emit('question:answered', updated)
+        internalBus.emit('thread:ready', { questionId })
       }
     })
   }
@@ -265,6 +283,20 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         await app.client.chat.postMessage({ channel, text: message })
       } catch (err) {
         console.error('[SlackBot] Failed to post notification:', err)
+      }
+    },
+    replyInThread: async (channelId: string, threadTs: string, text: string) => {
+      if (!app) return null
+      try {
+        const result = await app.client.chat.postMessage({
+          channel: channelId,
+          thread_ts: threadTs,
+          text,
+        })
+        return result.ts ?? null
+      } catch (err) {
+        console.error('[SlackBot] Failed to reply in thread:', err)
+        return null
       }
     },
     isConnected: () => connected,
