@@ -31,7 +31,7 @@ type ServerOptions = {
 }
 
 // Files accessible without authentication
-const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js', '/invite.html', '/invite-client.js'])
+const PUBLIC_FILES = new Set(['/login.html', '/auth-client.js', '/invite.html', '/invite-client.js', '/llms.txt'])
 
 export function createServer(options: ServerOptions = {}) {
   const {

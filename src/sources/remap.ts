@@ -28,7 +28,11 @@ export function applyFieldMapping(
   const defaults = DEFAULT_FIELD_MAPPINGS[sourceType] ?? {}
   const mapping: FieldMapping = { ...defaults, ...customMapping }
 
-  const author = mapping.author ? String(resolvePath(raw, mapping.author) ?? '') || null : null
+  let author = mapping.author ? String(resolvePath(raw, mapping.author) ?? '') || null : null
+  // Fallback: bot messages have 'username' instead of 'user_profile.real_name'
+  if (!author && sourceType === 'slack' && raw.username) {
+    author = String(raw.username)
+  }
   const content = mapping.content ? String(resolvePath(raw, mapping.content) ?? '') || null : null
   const url = mapping.url ? String(resolvePath(raw, mapping.url) ?? '') || null : null
 

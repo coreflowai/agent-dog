@@ -1,0 +1,154 @@
+# AgentFlow
+
+> Real-time observability platform for AI agent sessions
+
+AgentFlow captures and visualizes events from AI coding agents (Claude Code, Codex CLI, Open Code, Claude Agent SDK) in a real-time dashboard. Track tool usage, messages, errors, and session timelines.
+
+## Quick Integration
+
+### Claude Code (one-liner)
+
+```bash
+# Download the hook script from your AgentFlow instance
+curl -s https://your-server.com/setup/hook.sh -H "x-api-key: YOUR_KEY" -o ~/.claude/hooks/agent-flow-hook.sh
+chmod +x ~/.claude/hooks/agent-flow-hook.sh
+```
+
+Then add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{ "command": "~/.claude/hooks/agent-flow-hook.sh" }],
+    "PostToolUse": [{ "command": "~/.claude/hooks/agent-flow-hook.sh" }],
+    "Stop": [{ "command": "~/.claude/hooks/agent-flow-hook.sh" }]
+  }
+}
+```
+
+### Open Code
+
+```bash
+curl -s https://your-server.com/setup/opencode-plugin.ts -H "x-api-key: YOUR_KEY" -o .opencode/plugin/agent-flow.ts
+```
+
+### Claude Agent SDK
+
+```typescript
+import { createAgentFlowHooks } from './adapters/claude-code-sdk'
+const hooks = createAgentFlowHooks({ url: 'https://your-server.com', apiKey: 'YOUR_KEY' })
+```
+
+### Codex CLI
+
+```bash
+codex ... 2>&1 | ./adapters/codex-pipe.sh SESSION_ID
+```
+
+## Self-Hosting
+
+### Requirements
+
+- [Bun](https://bun.sh) runtime
+- SQLite (bundled with Bun)
+
+### Quick Start
+
+```bash
+git clone https://github.com/nicepkg/agent-flow.git
+cd agent-flow
+bun install
+bun run start
+```
+
+The server starts on port 3333 by default.
+
+### Environment Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `PORT` | `3333` | Server listen port |
+| `AGENT_FLOW_DB` | `agent-flow.db` | SQLite database path |
+| `AGENT_FLOW_URL` | `http://localhost:3333` | URL used by adapters to POST events |
+
+### Deploy on Railway
+
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app)
+
+Set `PORT` and `AGENT_FLOW_DB` as environment variables.
+
+## API Reference
+
+All `/api/*` routes require authentication via `x-api-key` header or session cookie.
+
+### Event Ingestion
+
+- `POST /api/ingest` — Receive events. Body: `{ source, sessionId, event, user?, git? }`
+
+### Sessions
+
+- `GET /api/sessions` — List all sessions
+- `GET /api/sessions/:id` — Session detail with events
+- `GET /api/sessions/:id/events?limit=200&offset=0` — Paginated events
+- `POST /api/sessions/:id/archive` — Archive a session
+- `DELETE /api/sessions/:id` — Delete a session
+- `DELETE /api/sessions` — Clear all sessions
+
+### Data Sources
+
+- `GET /api/sources` — List data sources with entry counts
+- `POST /api/sources` — Create data source. Body: `{ name, type, config }`
+- `GET /api/sources/:id` — Source detail
+- `PUT /api/sources/:id` — Update source config
+- `DELETE /api/sources/:id` — Delete source and entries
+- `POST /api/sources/:id/toggle` — Enable/disable. Body: `{ enabled }`
+- `POST /api/sources/:id/sync` — Manual sync (RSS sources)
+- `GET /api/sources/:id/entries?limit=50&offset=0` — Entries for a source
+- `GET /api/source-entries?limit=50&offset=0` — Global entry feed
+
+### Integrations
+
+- `GET /api/integrations/slack/channels` — List Slack channels
+- `GET /api/integrations/discord/guilds` — List Discord guilds
+- `GET /api/integrations/discord/channels?guildId=X` — List Discord text channels
+
+### Setup Endpoints
+
+- `GET /setup/hook.sh` — Download Claude Code hook script (pre-configured with server URL)
+- `GET /setup/opencode-plugin.ts` — Download Open Code plugin (pre-configured)
+
+## Event Format
+
+Events use dot-separated types: `{category}.{action}`
+
+Categories: `session`, `message`, `tool`, `error`, `system`
+
+Examples: `session.start`, `tool.end`, `message.user`, `message.assistant`
+
+### Ingest Payload
+
+```json
+{
+  "source": "claude-code",
+  "sessionId": "unique-session-id",
+  "event": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Write",
+    "tool_input": { "file_path": "/app/index.ts" }
+  },
+  "user": { "name": "dev", "email": "dev@example.com" },
+  "git": { "branch": "main", "repoName": "org/repo" }
+}
+```
+
+## Real-Time Updates
+
+AgentFlow uses Socket.IO for live event streaming. Connect to the server and subscribe to sessions:
+
+```javascript
+const socket = io('https://your-server.com')
+socket.on('sessions:list', (sessions) => { /* initial session list */ })
+socket.on('session:update', (session) => { /* session changed */ })
+socket.emit('subscribe', sessionId)
+socket.on('event', (event) => { /* new event in subscribed session */ })
+```

@@ -20,9 +20,6 @@ export function createSlackSourceListener(
       }
       deps.slackBot.registerChannelListener(config.channelId, (msg: any) => {
         try {
-          // Skip bot messages
-          if (msg.bot_id) return
-
           const channelId = msg.channel || config.channelId
           const ts = msg.ts || ''
           const externalId = `${channelId}:${ts}`
