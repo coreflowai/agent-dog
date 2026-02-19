@@ -168,7 +168,7 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
 
       for (const user of users) {
         try {
-          await analyzeUser(user.userId, minSessionsForAnalysis, dbPath, io, slackBot)
+          await analyzeUser(user.userId, minSessionsForAnalysis, dbPath, io, slackBot, sourcesDbPath)
         } catch (error) {
           console.error(`[InsightScheduler] Error analyzing ${user.userId}:`, error)
         }
@@ -239,6 +239,7 @@ async function analyzeUser(
   dbPath: string,
   io: SocketIOServer,
   slackBot?: { bot: SlackBot | null; restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> },
+  sourcesDbPath?: string,
 ) {
   console.log(`[InsightScheduler] Analyzing user: ${userId}`)
 
