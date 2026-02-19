@@ -2248,6 +2248,7 @@ function showIntegrationPanel(integration) {
   } else if (integration === 'sources') {
     sourcesPanel.classList.remove('hidden')
     loadSources()
+    fetchSlackChannels() // pre-fetch so dropdown is instant when opening the form
   }
 }
 
