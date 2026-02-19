@@ -374,44 +374,62 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     if (!question) return null
 
     const targetChannel = question.channelId || channel
+    const isCuriosity = question.meta?.source === 'curiosity'
 
-    const blocks: any[] = [
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*${question.question}*` },
-      },
-    ]
+    let result: any
 
-    if (question.context) {
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: question.context }],
+    if (isCuriosity) {
+      // Curiosity questions: casual plain text, no blocks
+      result = await app.client.chat.postMessage({
+        channel: targetChannel,
+        text: question.question,
       })
-    }
+    } else {
+      // Standard questions: structured blocks with bold title + options
+      const blocks: any[] = [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: `*${question.question}*` },
+        },
+      ]
 
-    if (question.options && question.options.length > 0) {
-      blocks.push({
-        type: 'actions',
-        block_id: question.id,
-        elements: question.options.map((opt: SlackQuestionOption) => ({
-          type: 'button',
-          text: { type: 'plain_text', text: opt.label },
-          action_id: `slack_q_${opt.id}`,
-          value: opt.id,
-          ...(opt.style ? { style: opt.style } : {}),
-        })),
-      })
-    }
+      if (question.context) {
+        blocks.push({
+          type: 'context',
+          elements: [{ type: 'mrkdwn', text: question.context }],
+        })
+      }
 
-    try {
-      const result = await app.client.chat.postMessage({
+      if (question.options && question.options.length > 0) {
+        blocks.push({
+          type: 'actions',
+          block_id: question.id,
+          elements: question.options.map((opt: SlackQuestionOption) => ({
+            type: 'button',
+            text: { type: 'plain_text', text: opt.label },
+            action_id: `slack_q_${opt.id}`,
+            value: opt.id,
+            ...(opt.style ? { style: opt.style } : {}),
+          })),
+        })
+      }
+
+      result = await app.client.chat.postMessage({
         channel: targetChannel,
         blocks,
         text: question.question,
       })
+    }
 
+    try {
       if (result.ts) {
         updateQuestionPosted(question.id, targetChannel, result.ts)
+
+        // Curiosity threads are immediately chat-ready
+        if (isCuriosity && chatHandler) {
+          chatHandler.registerThread(result.ts)
+        }
+
         const updated = getQuestion(question.id)
         if (updated && io) {
           io.emit('slack:question:posted', updated)

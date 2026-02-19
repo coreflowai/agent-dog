@@ -2612,7 +2612,7 @@ async function loadFeedEntries(append = false) {
   try {
     const params = new URLSearchParams({ limit: String(FEED_PAGE_SIZE), offset: String(feedPage * FEED_PAGE_SIZE) })
     if (feedSourceFilter) params.set('dataSourceId', feedSourceFilter)
-    const res = await fetch(`/api/source-entries?${params}`)
+    const res = await fetch(`/api/source-entries?${params}`, { credentials: 'include' })
     if (!res.ok) throw new Error('Failed to load')
     const entries = await res.json()
     if (entries.length < FEED_PAGE_SIZE) feedHasMore = false
