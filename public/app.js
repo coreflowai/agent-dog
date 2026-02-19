@@ -2614,7 +2614,8 @@ async function loadFeedEntries(append = false) {
     if (feedSourceFilter) params.set('dataSourceId', feedSourceFilter)
     const res = await fetch(`/api/source-entries?${params}`, { credentials: 'include' })
     if (!res.ok) throw new Error('Failed to load')
-    const entries = await res.json()
+    const data = await res.json()
+    const entries = data.entries || []
     if (entries.length < FEED_PAGE_SIZE) feedHasMore = false
     feedEntries = append ? feedEntries.concat(entries) : entries
     feedLoaded = true
