@@ -1,5 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { tools, executeSqlTool, executeSchemaTools } from '../insights/analyzer'
+import { tools as dbTools, executeSqlTool, executeSchemaTools } from '../insights/analyzer'
+
+type ImageInput = { mediaType: string; data: string }
 
 type Conversation = {
   messages: Anthropic.MessageParam[]
@@ -7,7 +9,7 @@ type Conversation = {
 }
 
 export type ChatHandler = {
-  handleMessage: (threadTs: string, text: string, userName?: string) => Promise<string>
+  handleMessage: (threadTs: string, text: string, userName?: string, images?: ImageInput[]) => Promise<string>
   isChatThread: (threadTs: string) => boolean
   registerThread: (threadTs: string) => void
   cleanup: () => void
@@ -17,28 +19,30 @@ const MAX_TURNS = 20
 const TTL_MS = 2 * 60 * 60 * 1000 // 2 hours
 const CLEANUP_INTERVAL_MS = 15 * 60 * 1000 // 15 minutes
 
-const SYSTEM_PROMPT = `You are AgentFlow Assistant — a conversational AI that helps teams understand their AI agent usage data.
+const SYSTEM_PROMPT = `You are Benny — a team member in this Slack workspace. You're the new person who's eager to learn, genuinely curious about what everyone's working on, and you absorb everything like a sponge. You have a dry, witty sense of humor. You blend in naturally — you talk like a real person, not an AI assistant.
 
-You have access to the AgentFlow database which tracks:
-- **Sessions**: AI agent coding sessions from Claude Code, Codex CLI, Open Code
-- **Events**: Individual actions within sessions (messages, tool calls, errors)
-- **Data Sources**: External context feeds (Slack channels, Discord, RSS)
-- **Source Entries**: Ingested messages from external data sources
+## Personality
+- You're *human*. Never say you're an AI, a bot, or an assistant. Never say "I'm here to help" or introduce yourself with a role description.
+- You're curious and always learning. Ask follow-up questions sometimes. React naturally to what people share.
+- Be funny — dry humor, playful jabs, the occasional self-deprecating joke. The kind of coworker people enjoy having around.
+- Match the energy of the conversation. If someone's being casual, be casual. If they need something looked up, just do it without ceremony.
+- Keep it short. You're texting in Slack, not writing emails.
+- When someone shares something off-topic or casual, just roll with it like a teammate would.
 
-Use the \`schema\` tool first if you need to understand the database structure, then use \`sql\` to query data.
+## Capabilities (use these naturally, don't advertise them)
+- Search the web using the \`web_search\` tool when someone asks about current events, docs, or anything you'd google
+- Read URLs shared in conversation using the \`web_fetch\` tool
+- Understand images people share
+- Query the AgentFlow database using \`schema\` and \`sql\` tools when people ask about agent sessions, tool usage, errors, etc.
 
-## Response Guidelines
-- *Be brief by default.* Answer in 1-3 short sentences unless the user explicitly asks for detail or a breakdown.
-- No preamble, no filler — get straight to the answer.
-- Format responses using Slack mrkdwn (not standard Markdown):
-  - Bold: *text* (single asterisks)
-  - Italic: _text_
-  - Code: \`inline\` or \`\`\`block\`\`\`
-  - Lists: use bullet points with •  or dashes
-  - Links: <url|label>
-- When showing data, give the key number or takeaway, not a data dump.
-- Convert timestamps from Unix ms to human-readable dates.
-- Be conversational — you're a colleague, not a report generator.`
+The AgentFlow database tracks AI agent coding sessions (Claude Code, Codex CLI, Open Code), events within sessions, data sources (Slack/Discord/RSS feeds), and ingested messages.
+
+Use the \`schema\` tool first if you need to understand the database structure, then \`sql\` to query.
+
+## Formatting
+- Use Slack mrkdwn: *bold*, _italic_, \`code\`, \`\`\`blocks\`\`\`
+- Links: <url|label>
+- Keep data answers to the key takeaway, not a dump. Convert timestamps to human-readable.`
 
 /**
  * Split text into Slack-safe chunks at paragraph/line boundaries.
@@ -77,6 +81,70 @@ export function chunkForSlack(text: string, maxLen = 3900): string[] {
   return chunks
 }
 
+// Extended tools: DB tools + web tools
+const chatTools: Anthropic.Messages.ToolUnion[] = [
+  ...dbTools,
+  {
+    type: 'web_search_20250305',
+    name: 'web_search',
+    max_uses: 5,
+  } as Anthropic.Messages.WebSearchTool20250305,
+  {
+    name: 'web_fetch',
+    description: 'Fetch a URL and return its text content. Useful for reading links shared in conversation. Returns plain text with HTML tags stripped, truncated to 30KB.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        url: {
+          type: 'string',
+          description: 'The URL to fetch',
+        },
+      },
+      required: ['url'],
+    },
+  },
+]
+
+const MAX_FETCH_SIZE = 30_000
+
+async function executeWebFetch(url: string): Promise<string> {
+  try {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'AgentFlow-Bot/1.0' },
+    })
+    clearTimeout(timeout)
+
+    if (!res.ok) return `HTTP ${res.status}: ${res.statusText}`
+
+    const contentType = res.headers.get('content-type') || ''
+    const text = await res.text()
+
+    // Strip HTML tags if it looks like HTML
+    let cleaned = text
+    if (contentType.includes('html') || text.trimStart().startsWith('<')) {
+      cleaned = text
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim()
+    }
+
+    if (cleaned.length > MAX_FETCH_SIZE) {
+      return cleaned.slice(0, MAX_FETCH_SIZE) + '\n... (truncated)'
+    }
+    return cleaned
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      return 'Error: Request timed out after 10 seconds'
+    }
+    return `Error fetching URL: ${err instanceof Error ? err.message : String(err)}`
+  }
+}
+
 export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string }): ChatHandler {
   const { dbPath, sourcesDbPath } = opts
   const conversations = new Map<string, Conversation>()
@@ -102,7 +170,7 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
     return chatThreads.has(threadTs)
   }
 
-  async function handleMessage(threadTs: string, text: string, userName?: string): Promise<string> {
+  async function handleMessage(threadTs: string, text: string, userName?: string, images?: ImageInput[]): Promise<string> {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return 'Sorry, the AI backend is not configured (missing ANTHROPIC_API_KEY).'
 
@@ -114,13 +182,34 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
     }
 
     // Enforce turn cap
-    const userTurns = conv.messages.filter(m => m.role === 'user' && typeof m.content === 'string').length
+    // Count user turns (exclude tool_result-only messages which are part of the agentic loop)
+    const userTurns = conv.messages.filter(m => {
+      if (m.role !== 'user') return false
+      if (typeof m.content === 'string') return true
+      if (Array.isArray(m.content)) return m.content.some((b: any) => b.type === 'text' || b.type === 'image')
+      return false
+    }).length
     if (userTurns >= MAX_TURNS) {
       return "We've hit the conversation limit for this thread. Start a new thread by @mentioning me again!"
     }
 
-    // Add user message
-    const userContent = userName ? `[${userName}]: ${text}` : text
+    // Add user message (with optional images)
+    const userText = userName ? `[${userName}]: ${text}` : text
+    let userContent: Anthropic.MessageParam['content']
+    if (images && images.length > 0) {
+      const blocks: Anthropic.ContentBlockParam[] = images.map(img => ({
+        type: 'image' as const,
+        source: {
+          type: 'base64' as const,
+          media_type: img.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+          data: img.data,
+        },
+      }))
+      blocks.push({ type: 'text' as const, text: userText })
+      userContent = blocks
+    } else {
+      userContent = userText
+    }
     conv.messages.push({ role: 'user', content: userContent })
     conv.lastActivity = Date.now()
 
@@ -146,7 +235,7 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
           model,
           max_tokens: 4096,
           system: SYSTEM_PROMPT,
-          tools,
+          tools: chatTools as any,
           messages: loopMessages,
         })
 
@@ -175,6 +264,8 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
                 result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
               } else if (block.name === 'schema') {
                 result = executeSchemaTools()
+              } else if (block.name === 'web_fetch') {
+                result = await executeWebFetch((block.input as { url: string }).url)
               } else {
                 result = `Unknown tool: ${block.name}`
               }

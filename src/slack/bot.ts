@@ -60,6 +60,29 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     chatHandler = createChatHandler({ dbPath, sourcesDbPath })
   }
 
+  const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024 // 5MB
+
+  async function extractImages(message: any): Promise<Array<{ mediaType: string; data: string }>> {
+    if (!message.files || !Array.isArray(message.files)) return []
+    const images: Array<{ mediaType: string; data: string }> = []
+    for (const file of message.files) {
+      if (!IMAGE_MIME_TYPES.has(file.mimetype)) continue
+      if (file.size > MAX_IMAGE_SIZE) continue
+      if (!file.url_private_download) continue
+      try {
+        const res = await fetch(file.url_private_download, {
+          headers: { 'Authorization': `Bearer ${botToken}` },
+        })
+        if (!res.ok) continue
+        const buf = await res.arrayBuffer()
+        const base64 = Buffer.from(buf).toString('base64')
+        images.push({ mediaType: file.mimetype, data: base64 })
+      } catch {}
+    }
+    return images
+  }
+
   function setupListeners(a: App) {
     // Catch async errors from Socket Mode / Web API
     a.error(async (error) => {
@@ -92,13 +115,16 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         } catch {}
       }
 
+      // Extract images from the message
+      const images = await extractImages(event)
+
       // Show hourglass while processing
       try {
         await client.reactions.add({ channel: event.channel, timestamp: event.ts, name: 'hourglass' })
       } catch {}
 
       try {
-        const reply = await chatHandler.handleMessage(threadTs, text, userName)
+        const reply = await chatHandler.handleMessage(threadTs, text, userName, images.length > 0 ? images : undefined)
         const chunks = chunkForSlack(reply)
         for (const chunk of chunks) {
           await client.chat.postMessage({
@@ -138,7 +164,9 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       if (!('thread_ts' in message) || !message.thread_ts) return
       if (!('channel' in message) || !message.channel) return
       if ('bot_id' in message && message.bot_id) return
-      if (!('text' in message) || !message.text) return
+      const hasText = 'text' in message && message.text
+      const hasFiles = 'files' in message && Array.isArray((message as any).files) && (message as any).files.length > 0
+      if (!hasText && !hasFiles) return
 
       // Route chat thread follow-ups (no @mention needed)
       if (chatHandler && chatHandler.isChatThread(message.thread_ts)) {
@@ -157,6 +185,9 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
           } catch {}
         }
 
+        // Extract images from the message
+        const images = await extractImages(message)
+
         // Show hourglass
         try {
           if ('ts' in message && message.ts) {
@@ -165,7 +196,8 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         } catch {}
 
         try {
-          const reply = await chatHandler.handleMessage(message.thread_ts, message.text, userName)
+          const msgText = ('text' in message && message.text) ? message.text : '(shared an image)'
+          const reply = await chatHandler.handleMessage(message.thread_ts, msgText, userName, images.length > 0 ? images : undefined)
           const chunks = chunkForSlack(reply)
           for (const chunk of chunks) {
             await client.chat.postMessage({
@@ -210,7 +242,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
 
       // Accumulate reply in DB (meta.threadReplies)
       addThreadReply(question.id, {
-        text: message.text,
+        text: ('text' in message ? message.text : '') || '',
         userId: ('user' in message ? message.user : undefined) || 'unknown',
         userName,
         ts: ('ts' in message ? message.ts : undefined) as string,
