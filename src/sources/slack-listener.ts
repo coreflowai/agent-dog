@@ -36,6 +36,43 @@ async function resolveUserMentions(text: string, client: any): Promise<string> {
 }
 
 /**
+ * Extract plain text from Slack Block Kit blocks and/or attachments.
+ * Used when msg.text is empty (e.g. Datadog alerts that use blocks-only).
+ */
+function extractTextFromBlocks(msg: any): string {
+  const parts: string[] = []
+
+  // Walk blocks array
+  if (Array.isArray(msg.blocks)) {
+    for (const block of msg.blocks) {
+      if (block.text?.text) parts.push(block.text.text)
+      if (Array.isArray(block.fields)) {
+        for (const f of block.fields) {
+          if (f.text) parts.push(f.text)
+        }
+      }
+      if (Array.isArray(block.elements)) {
+        for (const el of block.elements) {
+          if (el.text) parts.push(typeof el.text === 'string' ? el.text : el.text?.text || '')
+        }
+      }
+    }
+  }
+
+  // Walk attachments array (legacy format, still used by Datadog etc.)
+  if (Array.isArray(msg.attachments)) {
+    for (const att of msg.attachments) {
+      if (att.title) parts.push(att.title)
+      if (att.text) parts.push(att.text)
+      else if (att.fallback) parts.push(att.fallback)
+      if (att.pretext) parts.push(att.pretext)
+    }
+  }
+
+  return parts.filter(Boolean).join('\n')
+}
+
+/**
  * Slack channel listener — registers on existing Slack bot, no separate connection.
  */
 export function createSlackSourceListener(
@@ -68,6 +105,15 @@ export function createSlackSourceListener(
           // Resolve <@USERID> mentions in message text
           if (client && msg.text) {
             msg = { ...msg, text: await resolveUserMentions(msg.text, client) }
+          }
+
+          // Fallback: extract text from blocks/attachments when text is empty
+          // (e.g. Datadog alerts that use Block Kit only)
+          if (!msg.text && (msg.blocks || msg.attachments)) {
+            const extracted = extractTextFromBlocks(msg)
+            if (extracted) {
+              msg = { ...msg, text: extracted }
+            }
           }
 
           const entry = applyFieldMapping(
