@@ -1,20 +1,15 @@
 import { Cron } from 'croner'
 import { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
-import { runAnalysis, runRefinement, type AnalysisResult } from './analyzer'
+import { runAnalysis } from './analyzer'
 import {
   getUsersWithActivity,
   getAnalysisState,
   updateAnalysisState,
   addInsight,
-  updateInsight,
-  getInsight,
-  countUserEventsSince,
   countUserSessionsSince,
 } from '../db/insights'
-import { addQuestion, getQuestion, getQuestionsByInsightId, markQuestionAnsweredFromReplies } from '../db/slack'
 import type { SlackBot } from '../slack'
-import type { InsightMeta } from '../types'
 
 // Minimum sessions required to trigger analysis
 const MIN_SESSIONS_FOR_ANALYSIS = 10
@@ -22,8 +17,6 @@ const MIN_SESSIONS_FOR_ANALYSIS = 10
 // Default analysis window: 30 minutes
 const DEFAULT_ANALYSIS_WINDOW_MS = 30 * 60 * 1000
 
-// Default max question rounds
-const DEFAULT_MAX_QUESTION_ROUNDS = 3
 
 export type InsightSchedulerOptions = {
   /** Socket.IO server for real-time updates */
@@ -42,8 +35,6 @@ export type InsightSchedulerOptions = {
   slackBot?: { bot: SlackBot | null; restart: (config: { botToken: string; appToken: string; channel: string }) => Promise<void> }
   /** Internal event bus for cross-component communication */
   internalBus?: EventEmitter
-  /** Max rounds of questions before forcing final */
-  maxQuestionRounds?: number
 }
 
 export type InsightScheduler = {
@@ -69,88 +60,9 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
     minSessionsForAnalysis = MIN_SESSIONS_FOR_ANALYSIS,
     slackBot,
     internalBus,
-    maxQuestionRounds = DEFAULT_MAX_QUESTION_ROUNDS,
   } = options
 
   let isAnalyzing = false
-
-  // Listen for thread:ready events — debounced thread replies are ready for refinement
-  if (internalBus) {
-    internalBus.on('thread:ready', async ({ questionId }: { questionId: string }) => {
-      try {
-        // Consolidate thread replies into the answer field
-        markQuestionAnsweredFromReplies(questionId)
-
-        const question = getQuestion(questionId)
-        if (!question || !question.insightId) return
-
-        const insight = getInsight(question.insightId)
-        if (!insight) return
-
-        // Gather all answered questions for this insight
-        const answeredQuestions = getQuestionsByInsightId(insight.id)
-          .filter(q => q.status === 'answered')
-        if (answeredQuestions.length === 0) return
-
-        const answers = answeredQuestions.map(q => ({
-          question: q.question,
-          answer: q.answer || '',
-          answeredBy: q.answeredByName || q.answeredBy || 'unknown',
-        }))
-
-        console.log(`[InsightScheduler] Thread ready for question ${questionId}, refining insight ${insight.id} with ${answers.length} answers`)
-
-        const refinedResult = await runRefinement({
-          userId: insight.userId,
-          originalContent: insight.content,
-          answers,
-          dbPath,
-          sourcesDbPath,
-        })
-
-        if (!refinedResult.success) {
-          console.error(`[InsightScheduler] Thread refinement failed:`, refinedResult.error)
-          io.emit('insight:error', { userId: insight.userId, error: refinedResult.error, timestamp: Date.now() })
-          return
-        }
-
-        // Determine phase
-        const hasFollowUps = refinedResult.questions && refinedResult.questions.length > 0
-        const currentRound = (insight.meta?.answersReceived ?? 0)
-        const refinedPhase = (hasFollowUps && currentRound + 1 < maxQuestionRounds) ? 'preliminary' as const : 'refined' as const
-
-        // Reply in the Slack thread with a summary
-        if (slackBot?.bot?.isConnected() && question.channelId && question.messageTs) {
-          const summary = buildRefinementSummary(refinedResult)
-          await slackBot.bot.replyInThread(question.channelId, question.messageTs, summary)
-
-          // If follow-up questions, post them in the same thread
-          if (hasFollowUps && refinedPhase === 'preliminary') {
-            for (const fq of refinedResult.questions!) {
-              const followUpText = `*Follow-up:* ${fq.text}${fq.reason ? `\n> _${fq.reason}_` : ''}`
-              await slackBot.bot.replyInThread(question.channelId, question.messageTs, followUpText)
-            }
-          }
-        }
-
-        updateInsight(insight.id, {
-          content: refinedResult.content,
-          categories: refinedResult.categories,
-          followUpActions: refinedResult.followUpActions,
-          meta: {
-            ...refinedResult.meta,
-            phase: refinedPhase,
-            answersReceived: answeredQuestions.length,
-          },
-        })
-
-        io.emit('insight:updated', getInsight(insight.id))
-        console.log(`[InsightScheduler] Refined insight ${insight.id} via thread — phase: ${refinedPhase}`)
-      } catch (err) {
-        console.error('[InsightScheduler] Error handling thread:ready:', err)
-      }
-    })
-  }
 
   async function runAnalysisJob() {
     if (isAnalyzing) {
@@ -207,31 +119,8 @@ export function createInsightScheduler(options: InsightSchedulerOptions): Insigh
 }
 
 /**
- * Build a concise Slack message summarizing the refinement result.
- */
-function buildRefinementSummary(result: AnalysisResult): string {
-  const lines: string[] = [':white_check_mark: Thanks for the input! I\'ve updated the insight.\n']
-
-  // Try to extract the first meaningful paragraph from the content
-  const contentLines = result.content.split('\n').filter(l => l.trim() && !l.startsWith('#'))
-  if (contentLines.length > 0) {
-    const preview = contentLines.slice(0, 3).join('\n')
-    lines.push(preview.length > 500 ? preview.slice(0, 500) + '…' : preview)
-  }
-
-  if (result.followUpActions?.length) {
-    lines.push('\n*Follow-up actions:*')
-    for (const a of result.followUpActions.slice(0, 3)) {
-      lines.push(`  • ${a.action}`)
-    }
-  }
-
-  return lines.join('\n')
-}
-
-/**
  * Analyze all recent sessions for a single user (across all repos).
- * Posts questions to Slack; refinement happens asynchronously via thread:ready events.
+ * Generates insights stored in DB — no Slack questions (curiosity bot handles Q&A).
  */
 async function analyzeUser(
   userId: string,
@@ -272,17 +161,7 @@ async function analyzeUser(
     return
   }
 
-  const hasQuestions = result.questions && result.questions.length > 0
-  const canAskQuestions = hasQuestions && slackBot?.bot?.isConnected()
-
-  // Save the initial insight
-  const meta: InsightMeta = {
-    ...result.meta,
-    phase: canAskQuestions ? 'preliminary' : (hasQuestions ? 'final-no-answers' : undefined),
-    questionCount: result.questions?.length ?? 0,
-    answersReceived: 0,
-  }
-
+  // Save the insight — questions are NOT posted to Slack (curiosity bot handles Q&A)
   const insight = addInsight({
     userId,
     repoName: null,
@@ -293,7 +172,7 @@ async function analyzeUser(
     eventsAnalyzed: result.eventsAnalyzed,
     analysisWindowStart,
     analysisWindowEnd,
-    meta,
+    meta: result.meta,
   })
 
   console.log(`[InsightScheduler] Created insight ${insight.id} for ${userId}`)
@@ -303,27 +182,5 @@ async function analyzeUser(
 
   // Emit real-time update via Socket.IO
   io.emit('insight:new', insight)
-
-  // If no questions or no Slack bot, we're done
-  if (!canAskQuestions || !result.questions) {
-    if (hasQuestions) {
-      console.log(`[InsightScheduler] AI had ${result.questions!.length} questions but Slack not connected — saving as final-no-answers`)
-    }
-    return
-  }
-
-  // Post questions to Slack — refinement happens asynchronously via thread:ready events
-  console.log(`[InsightScheduler] Posting ${result.questions.length} questions for ${userId}`)
-  for (const q of result.questions) {
-    const dbQuestion = addQuestion({
-      question: q.text,
-      context: q.reason,
-      insightId: insight.id,
-      options: q.options?.map(o => ({ id: o.id, label: o.label })),
-      meta: { targetUser: q.targetUser, round: 1 },
-    })
-    await slackBot!.bot!.postQuestion(dbQuestion.id)
-  }
-  console.log(`[InsightScheduler] Questions posted for ${userId} — waiting for thread replies`)
 }
 

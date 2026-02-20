@@ -1,8 +1,8 @@
 import { App } from '@slack/bolt'
 import type { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
-import { getQuestion, updateQuestionPosted, updateQuestionAnswer, findQuestionByThread, addThreadReply } from '../db/slack'
-import type { SlackQuestion, SlackQuestionOption } from '../types'
+import { getQuestion, updateQuestionPosted } from '../db/slack'
+import type { SlackQuestion } from '../types'
 import { createChatHandler, chunkForSlack, type ChatHandler } from './chat'
 
 export type SlackBotOptions = {
@@ -220,183 +220,6 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         return // Don't fall through to question-thread handling
       }
 
-      const question = findQuestionByThread(message.channel, message.thread_ts)
-      if (!question) return
-      if (question.status === 'expired') return
-
-      // React to acknowledge the reply
-      try {
-        if ('ts' in message && message.ts) {
-          await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'eyes' })
-        }
-      } catch {}
-
-      // Resolve user name
-      let userName: string | undefined
-      if ('user' in message && message.user) {
-        try {
-          const userInfo = await client.users.info({ user: message.user })
-          userName = userInfo.user?.real_name || userInfo.user?.name
-        } catch {}
-      }
-
-      // Accumulate reply in DB (meta.threadReplies)
-      addThreadReply(question.id, {
-        text: ('text' in message ? message.text : '') || '',
-        userId: ('user' in message ? message.user : undefined) || 'unknown',
-        userName,
-        ts: ('ts' in message ? message.ts : undefined) as string,
-        receivedAt: Date.now(),
-      })
-
-      console.log(`[SlackBot] Thread reply accumulated for question ${question.id} from ${userName || 'unknown'}`)
-
-      // Instant reply with a "Refine insight" button
-      try {
-        await client.chat.postMessage({
-          channel: message.channel,
-          thread_ts: message.thread_ts,
-          text: `Got it, thanks ${userName ? userName : ''}! Want me to update the insight with your feedback?`,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: `Got it, thanks${userName ? ` ${userName}` : ''}! Want me to update the insight with your feedback?`,
-              },
-            },
-            {
-              type: 'actions',
-              block_id: `refine_${question.id}`,
-              elements: [
-                {
-                  type: 'button',
-                  text: { type: 'plain_text', text: 'Refine insight' },
-                  action_id: 'refine_insight',
-                  value: question.id,
-                  style: 'primary',
-                },
-                {
-                  type: 'button',
-                  text: { type: 'plain_text', text: 'Not now' },
-                  action_id: 'refine_skip',
-                  value: question.id,
-                },
-              ],
-            },
-          ],
-        })
-      } catch (err) {
-        console.error('[SlackBot] Failed to post refine prompt:', err)
-      }
-    })
-
-    // Button click listener — matches action IDs starting with slack_q_
-    a.action(/^slack_q_/, async ({ action, body, ack, client }) => {
-      await ack()
-
-      if (action.type !== 'button') return
-      const optionId = action.value || ''
-      const questionId = action.block_id || ''
-
-      const question = getQuestion(questionId)
-      if (!question) return
-      if (question.status === 'answered') return
-
-      const selectedOption = question.options?.find(o => o.id === optionId)
-      const userId = 'user' in body ? (body.user as any)?.id : undefined
-      const userName = 'user' in body ? (body.user as any)?.name : undefined
-
-      updateQuestionAnswer(questionId, {
-        answer: selectedOption?.label || optionId,
-        answeredBy: userId || 'unknown',
-        answeredByName: userName,
-        answerSource: 'button',
-        selectedOption: optionId,
-      })
-
-      if (question.channelId && question.messageTs) {
-        try {
-          await client.chat.update({
-            channel: question.channelId,
-            ts: question.messageTs,
-            blocks: [
-              {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*${question.question}*` },
-              },
-              ...(question.context ? [{
-                type: 'context' as const,
-                elements: [{ type: 'mrkdwn' as const, text: question.context }],
-              }] : []),
-              {
-                type: 'section',
-                text: {
-                  type: 'mrkdwn',
-                  text: `:white_check_mark: *${selectedOption?.label || optionId}* — answered by <@${userId}>`,
-                },
-              },
-            ],
-            text: `${question.question} — Answered: ${selectedOption?.label || optionId}`,
-          })
-        } catch {}
-      }
-
-      const updated = getQuestion(questionId)
-      if (updated && io) {
-        io.emit('slack:question:answered', updated)
-      }
-      // Button clicks are immediate — trigger refinement directly
-      if (updated && internalBus) {
-        internalBus.emit('thread:ready', { questionId })
-      }
-    })
-
-    // "Refine insight" button — user approved refinement
-    a.action('refine_insight', async ({ action, body, ack, client }) => {
-      await ack()
-      if (action.type !== 'button') return
-      const questionId = action.value || ''
-
-      // Update the prompt message to show processing
-      const msgBody = body as any
-      if (msgBody.channel?.id && msgBody.message?.ts) {
-        try {
-          await client.chat.update({
-            channel: msgBody.channel.id,
-            ts: msgBody.message.ts,
-            text: ':hourglass_flowing_sand: Refining insight with your feedback...',
-            blocks: [{
-              type: 'section',
-              text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: Refining insight with your feedback...' },
-            }],
-          })
-        } catch {}
-      }
-
-      console.log(`[SlackBot] Refine approved for question ${questionId}`)
-      if (internalBus) {
-        internalBus.emit('thread:ready', { questionId })
-      }
-    })
-
-    // "Not now" button — dismiss the refine prompt
-    a.action('refine_skip', async ({ action, body, ack, client }) => {
-      await ack()
-      const msgBody = body as any
-      if (msgBody.channel?.id && msgBody.message?.ts) {
-        try {
-          await client.chat.update({
-            channel: msgBody.channel.id,
-            ts: msgBody.message.ts,
-            text: 'No problem — feedback saved for later.',
-            blocks: [{
-              type: 'section',
-              text: { type: 'mrkdwn', text: 'No problem — feedback saved for later.' },
-            }],
-          })
-        } catch {}
-      }
     })
   }
 
@@ -406,59 +229,18 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
     if (!question) return null
 
     const targetChannel = question.channelId || channel
-    const isCuriosity = question.meta?.source === 'curiosity'
 
-    let result: any
-
-    if (isCuriosity) {
-      // Curiosity questions: casual plain text, no blocks
-      result = await app.client.chat.postMessage({
-        channel: targetChannel,
-        text: question.question,
-      })
-    } else {
-      // Standard questions: structured blocks with bold title + options
-      const blocks: any[] = [
-        {
-          type: 'section',
-          text: { type: 'mrkdwn', text: `*${question.question}*` },
-        },
-      ]
-
-      if (question.context) {
-        blocks.push({
-          type: 'context',
-          elements: [{ type: 'mrkdwn', text: question.context }],
-        })
-      }
-
-      if (question.options && question.options.length > 0) {
-        blocks.push({
-          type: 'actions',
-          block_id: question.id,
-          elements: question.options.map((opt: SlackQuestionOption) => ({
-            type: 'button',
-            text: { type: 'plain_text', text: opt.label },
-            action_id: `slack_q_${opt.id}`,
-            value: opt.id,
-            ...(opt.style ? { style: opt.style } : {}),
-          })),
-        })
-      }
-
-      result = await app.client.chat.postMessage({
-        channel: targetChannel,
-        blocks,
-        text: question.question,
-      })
-    }
+    // Always post as casual plain text — registered as chat thread so Benny handles replies
+    const result = await app.client.chat.postMessage({
+      channel: targetChannel,
+      text: question.question,
+    })
 
     try {
       if (result.ts) {
         updateQuestionPosted(question.id, targetChannel, result.ts)
 
-        // Curiosity threads are immediately chat-ready
-        if (isCuriosity && chatHandler) {
+        if (chatHandler) {
           chatHandler.registerThread(result.ts)
         }
 

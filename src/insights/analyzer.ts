@@ -7,7 +7,6 @@ export type AnalysisQuestion = {
   text: string
   reason: string
   targetUser?: string
-  options?: Array<{ id: string; label: string }>
 }
 
 export type AnalysisResult = {
@@ -42,6 +41,9 @@ The metadata JSON in sessions contains:
 
 Event categories: 'session', 'message', 'tool', 'error', 'system'
 Event types: 'session.start', 'session.end', 'message.user', 'message.assistant', 'tool.start', 'tool.end', etc.
+
+IMPORTANT: Always use LIMIT (max 200 rows) to avoid oversized results that blow up context.
+For large datasets, query counts and aggregates first, then drill into specifics.
 
 Returns results as JSON array. Only SELECT statements are allowed.`,
     input_schema: {
@@ -318,6 +320,7 @@ First, use the \`schema\` tool to understand the database structure, then perfor
    - Sessions: WHERE user_id = '${userId}'
    - Events: Join with sessions and filter by timestamp > ${sinceTimestamp}
    - Include data from ALL repositories the user has worked in
+   - Use LIMIT clauses (max 200 rows) — query summaries/counts first, then drill into specific sessions
 
 2. **Analyze User Intent**: What was the user trying to accomplish?
    - Look at message.user events for their prompts/requests
@@ -344,17 +347,6 @@ First, use the \`schema\` tool to understand the database structure, then perfor
    - Look for mentions of tools, repos, or patterns the user has been working with
    - Cross-reference timestamps — did team discussions relate to the user's work?
    - Note relevant external context that adds depth to your analysis
-
-7. **Questions for Humans** (Optional): If you encounter genuinely unclear patterns,
-   you may ask questions to the team. Be human — write like a curious colleague,
-   not a report generator. Only ask when:
-   - You see ambiguous patterns that could be read multiple ways
-   - You need domain context ("is this endpoint supposed to be slow?")
-   - Cross-user patterns need team confirmation
-   - A frustration point might have a known workaround
-
-   Do NOT ask for every insight. Most runs should have zero questions.
-   If asking, keep it to 1-3 focused questions.
 
 ${teamContext || ''}
 
@@ -387,14 +379,6 @@ Generate your response as valid JSON with this exact structure:
       "action": "Specific action to take",
       "priority": "low|medium|high",
       "category": "tooling|workflow|knowledge|other"
-    }
-  ],
-  "questions": [
-    {
-      "text": "Hey — I noticed X happened 4 times. Is there a known issue, or is this expected?",
-      "reason": "Unclear if this is a real problem or intentional",
-      "targetUser": "username_or_null",
-      "options": [{"id": "known", "label": "Known issue"}, {"id": "expected", "label": "Expected"}]
     }
   ],
   "stats": {
@@ -450,6 +434,8 @@ export async function runAnalysis(
 
     let totalInputTokens = 0
     let totalOutputTokens = 0
+
+    const MAX_TOOL_RESULT = 30_000
 
     // Agentic loop - keep calling until we get a final response
     const maxIterations = 10
@@ -557,6 +543,10 @@ export async function runAnalysis(
             result = `Error: ${err instanceof Error ? err.message : String(err)}`
           }
 
+          if (result.length > MAX_TOOL_RESULT) {
+            result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT or narrow your WHERE clause)'
+          }
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
@@ -659,6 +649,8 @@ Be specific, actionable, and integrate the human answers into a better analysis.
     let totalInputTokens = 0
     let totalOutputTokens = 0
 
+    const MAX_TOOL_RESULT = 30_000
+
     const maxIterations = 10
     for (let i = 0; i < maxIterations; i++) {
       const response = await client.messages.create({
@@ -723,6 +715,9 @@ Be specific, actionable, and integrate the human answers into a better analysis.
             }
           } catch (err) {
             result = `Error: ${err instanceof Error ? err.message : String(err)}`
+          }
+          if (result.length > MAX_TOOL_RESULT) {
+            result = result.slice(0, MAX_TOOL_RESULT) + '\n... (truncated — use LIMIT or narrow your WHERE clause)'
           }
           toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
         }
