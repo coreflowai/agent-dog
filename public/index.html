@@ -202,54 +202,7 @@
     .feed-entry:hover { background: color-mix(in oklch, var(--color-base-content) 3%, transparent); }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
   </style>
-  <style>
-    /* Mobile responsive — plain CSS, not processed by Tailwind */
-    @media (max-width: 767px) {
-      /* Layout */
-      #sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
-      #sidebar-handle { display: none !important; }
-      #sidebar.mobile-hidden { display: none !important; }
-      #main-panel.mobile-hidden { display: none !important; }
-      #mobile-back { display: flex !important; }
-      .resize-handle-y { display: none !important; }
-      #detail-panel { max-height: 50vh !important; }
-
-      /* Navbar: compact for mobile */
-      .navbar { padding-left: 12px; padding-right: 12px; }
-      .navbar .badge-ghost { display: none; }
-
-      /* Bubbles: full-width stacked */
-      .agent-bubble { width: 100% !important; padding: 12px; }
-      .cooking-container, .waiting-container { flex-direction: column; }
-      #bubble-inner { padding: 12px; }
-
-      /* Session list: larger tap targets */
-      .session-item { padding: 12px; }
-
-      /* Back button: more prominent */
-      #mobile-back { padding: 10px 12px; }
-      #mobile-back span { font-size: 13px; }
-
-      /* Event panel text sizes */
-      .event-row .cell-time, .event-row .cell-content { padding-top: 6px; padding-bottom: 6px; }
-
-      /* Insights: full-width stacked on mobile */
-      #insights-sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
-      #insights-sidebar-handle { display: none !important; }
-      #insights-sidebar.mobile-hidden { display: none !important; }
-      #insights-main.mobile-hidden { display: none !important; }
-      #insights-mobile-back { display: flex !important; }
-
-      /* Help dialog tabs: horizontal scroll */
-      #setup-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
-      #setup-tabs button { flex-shrink: 0; }
-
-      /* Integrations: full-width on mobile */
-      #integrations-sidebar { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
-      #integrations-sidebar.mobile-hidden { display: none !important; }
-      #integrations-main.mobile-hidden { display: none !important; }
-    }
-  </style>
+  <link rel="stylesheet" href="/mobile.css" />
 </head>
 <body class="bg-base-100 text-base-content">
 
