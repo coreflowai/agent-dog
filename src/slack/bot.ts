@@ -106,6 +106,38 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       const threadTs = event.thread_ts || event.ts
       chatHandler.registerThread(threadTs)
 
+      // Seed prior thread messages if this mention is inside an existing thread
+      if (event.thread_ts) {
+        try {
+          const replies = await client.conversations.replies({
+            channel: event.channel,
+            ts: event.thread_ts,
+          })
+          if (replies.messages && replies.messages.length > 1) {
+            // Resolve user names for prior messages and build history
+            const priorMessages: Array<{ role: 'user' | 'assistant'; text: string }> = []
+            for (const msg of replies.messages) {
+              // Skip bot messages and the current message
+              if ('bot_id' in msg && msg.bot_id) continue
+              if (msg.ts === event.ts) continue
+              if (!msg.text) continue
+
+              let name = 'Unknown'
+              if (msg.user) {
+                try {
+                  const info = await client.users.info({ user: msg.user })
+                  name = info.user?.real_name || info.user?.name || 'Unknown'
+                } catch {}
+              }
+              priorMessages.push({ role: 'user', text: `[${name}]: ${msg.text}` })
+            }
+            chatHandler.seedHistory(threadTs, priorMessages)
+          }
+        } catch (err) {
+          console.error('[SlackBot] Failed to fetch thread history:', err)
+        }
+      }
+
       // Resolve user name
       let userName: string | undefined
       if (event.user) {

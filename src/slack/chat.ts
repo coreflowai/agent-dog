@@ -12,6 +12,7 @@ export type ChatHandler = {
   handleMessage: (threadTs: string, text: string, userName?: string, images?: ImageInput[]) => Promise<string>
   isChatThread: (threadTs: string) => boolean
   registerThread: (threadTs: string) => void
+  seedHistory: (threadTs: string, messages: Array<{ role: 'user' | 'assistant'; text: string }>) => void
   cleanup: () => void
 }
 
@@ -170,6 +171,32 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
     return chatThreads.has(threadTs)
   }
 
+  function seedHistory(threadTs: string, messages: Array<{ role: 'user' | 'assistant'; text: string }>): void {
+    // Only seed if conversation doesn't already exist (prevents re-seeding on follow-ups)
+    if (conversations.has(threadTs)) return
+    if (messages.length === 0) return
+
+    const params: Anthropic.MessageParam[] = []
+    for (const msg of messages) {
+      // Merge consecutive same-role messages (Anthropic API requires alternating roles)
+      const last = params[params.length - 1]
+      if (last && last.role === msg.role) {
+        last.content = (last.content as string) + '\n' + msg.text
+      } else {
+        params.push({ role: msg.role, content: msg.text })
+      }
+    }
+
+    // Ensure first message is user role (API requirement)
+    while (params.length > 0 && params[0].role !== 'user') {
+      params.shift()
+    }
+
+    if (params.length === 0) return
+
+    conversations.set(threadTs, { messages: params, lastActivity: Date.now() })
+  }
+
   async function handleMessage(threadTs: string, text: string, userName?: string, images?: ImageInput[]): Promise<string> {
     const apiKey = process.env.ANTHROPIC_API_KEY
     if (!apiKey) return 'Sorry, the AI backend is not configured (missing ANTHROPIC_API_KEY).'
@@ -319,6 +346,7 @@ export function createChatHandler(opts: { dbPath: string; sourcesDbPath?: string
     handleMessage,
     isChatThread,
     registerThread,
+    seedHistory,
     cleanup: () => {
       clearInterval(cleanupTimer)
       conversations.clear()
