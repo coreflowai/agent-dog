@@ -3,6 +3,7 @@ import { getDb } from './index'
 import { dataSources } from './schema'
 import { eq, desc } from 'drizzle-orm'
 import type { DataSource, SourceEntry, CreateDataSourceInput, UpdateDataSourceInput } from '../types'
+import { embedAndStore, deleteFromVectorStore } from './vectors'
 
 let _sourcesDb: Database | null = null
 
@@ -124,6 +125,8 @@ export function deleteDataSource(id: string) {
     const sdb = getSourcesDb()
     sdb.run('DELETE FROM source_entries WHERE data_source_id = ?', [id])
   } catch {}
+  // Clean up vectors
+  deleteFromVectorStore(id)
 }
 
 // --- SourceEntry CRUD (in separate sources.db via raw bun:sqlite) ---
@@ -140,6 +143,9 @@ export function addSourceEntry(entry: Omit<SourceEntry, 'id' | 'ingestedAt'>): S
     [id, entry.dataSourceId, entry.externalId, entry.author, entry.content, entry.url, entry.timestamp, ingestedAt, meta]
   )
   if (result.changes === 0) return null // duplicate
+  // Fire-and-forget vector embedding
+  embedAndStore({ id, content: entry.content ?? '', author: entry.author, dataSourceId: entry.dataSourceId, timestamp: entry.timestamp })
+    .catch(err => console.error('[VectorStore] Embed error:', err))
   return { id, ...entry, ingestedAt, meta: entry.meta ?? {} }
 }
 

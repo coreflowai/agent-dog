@@ -12,6 +12,7 @@ import type { IngestPayload, CreateSlackQuestionInput, CreateDataSourceInput, Up
 import type { SlackBot } from './slack'
 import type { SourceManager } from './sources'
 import { listSourceEntries, getEntryCount } from './db/sources'
+import { semanticSearch } from './db/vectors'
 
 function expandPath(p: string): string {
   if (p.startsWith('~/')) return resolve(homedir(), p.slice(2))
@@ -922,6 +923,20 @@ export const AgentFlowPlugin = async () => {
       const limit = parseInt(url.searchParams.get('limit') || '50', 10)
       const offset = parseInt(url.searchParams.get('offset') || '0', 10)
       return json(listSourceEntries({ dataSourceId, limit, offset }))
+    }
+
+    // GET /api/search — semantic search over source entries
+    if (req.method === 'GET' && pathname === '/api/search') {
+      const q = url.searchParams.get('q')
+      if (!q) return json({ error: 'Missing query parameter: q' }, 400)
+      const topk = parseInt(url.searchParams.get('topk') || '20', 10)
+      const dataSourceId = url.searchParams.get('dataSourceId') || undefined
+      try {
+        const results = await semanticSearch(q, { topk, dataSourceId })
+        return json({ results, query: q })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Search failed' }, 500)
+      }
     }
 
     return null // Not handled

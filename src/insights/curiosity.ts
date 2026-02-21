@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { EventEmitter } from 'events'
 import type { Server as SocketIOServer } from 'socket.io'
-import { tools, executeSqlTool, executeSchemaTools, buildTeamContext } from './analyzer'
+import { tools, executeSqlTool, executeSchemaTools, executeSemanticSearchTool, buildTeamContext } from './analyzer'
 import { addQuestion, getQuestion, markQuestionAnsweredFromReplies } from '../db/slack'
 import { addDataSource, listDataSources, addSourceEntry } from '../db/sources'
 import type { SlackBot } from '../slack'
@@ -70,15 +70,19 @@ First use the \`schema\` tool to understand the database, then explore.
 
 ## Past Q&A
 
-Check what you've already asked so you don't repeat yourself:
+Check what you've already asked so you don't repeat yourself. Use the \`semantic_search\` tool
+to find similar past questions before generating a new one. Also query recent Q&A via SQL:
 
 \`\`\`sql
-SELECT se.content, se.timestamp, se.meta
+SELECT se.content, se.timestamp
 FROM src.source_entries se
 WHERE se.data_source_id = '${agentDataSourceId}'
 ORDER BY se.timestamp DESC
 LIMIT 20;
 \`\`\`
+
+After drafting your question idea, use \`semantic_search\` with your candidate question to check
+if something similar was already asked. If it was, pick a different angle.
 
 ## Guidelines
 
@@ -174,6 +178,9 @@ async function runCuriosityPrompt(opts: {
             result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
           } else if (block.name === 'schema') {
             result = executeSchemaTools()
+          } else if (block.name === 'semantic_search') {
+            const input = block.input as { query: string; topk?: number; dataSourceId?: string }
+            result = await executeSemanticSearchTool(input.query, input.topk, input.dataSourceId)
           } else {
             result = `Unknown tool: ${block.name}`
           }

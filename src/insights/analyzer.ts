@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { Database } from 'bun:sqlite'
 import { analysisToMarkdown, type AnalysisOutput } from './prompts'
 import type { InsightMeta, FollowUpAction } from '../types'
+import { semanticSearch } from '../db/vectors'
 
 export type AnalysisQuestion = {
   text: string
@@ -64,6 +65,28 @@ Returns results as JSON array. Only SELECT statements are allowed.`,
       type: 'object' as const,
       properties: {},
       required: [],
+    },
+  },
+  {
+    name: 'semantic_search',
+    description: 'Search source entries by semantic similarity. Returns relevant Slack/Discord/RSS messages and past Q&A that are semantically related to your query. Use this when looking for context about a topic, finding similar past questions, or understanding what the team has discussed.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language search query',
+        },
+        topk: {
+          type: 'number',
+          description: 'Number of results to return (default 10, max 50)',
+        },
+        dataSourceId: {
+          type: 'string',
+          description: 'Optional: filter to a specific data source ID',
+        },
+      },
+      required: ['query'],
     },
   },
 ]
@@ -269,6 +292,29 @@ ORDER BY se.timestamp DESC;
 }
 
 /**
+ * Execute the semantic_search tool — vector similarity search over source entries.
+ */
+export async function executeSemanticSearchTool(
+  query: string,
+  topk?: number,
+  dataSourceId?: string
+): Promise<string> {
+  const results = await semanticSearch(query, { topk, dataSourceId })
+  if (results.length === 0) {
+    return JSON.stringify({ results: [], message: 'No results found (semantic search may not be configured)' })
+  }
+  return JSON.stringify(results.map(r => ({
+    id: r.id,
+    content: r.content,
+    author: r.author,
+    dataSourceId: r.dataSourceId,
+    timestamp: r.timestamp,
+    time: new Date(r.timestamp).toISOString(),
+    score: Math.round(r.score * 1000) / 1000,
+  })))
+}
+
+/**
  * Build team context from session metadata for the analysis prompt.
  */
 export function buildTeamContext(dbPath: string): string {
@@ -342,11 +388,11 @@ First, use the \`schema\` tool to understand the database structure, then perfor
    - Based on observed patterns and struggles
    - Practical, actionable recommendations
 
-6. **Check External Context** (Optional): If external data sources are configured,
-   query \`src.source_entries\` to see what the team has been discussing:
-   - Look for mentions of tools, repos, or patterns the user has been working with
-   - Cross-reference timestamps — did team discussions relate to the user's work?
-   - Note relevant external context that adds depth to your analysis
+6. **Check External Context** (Optional): Use the \`semantic_search\` tool to find relevant
+   external context (Slack/Discord/RSS messages, past Q&A) related to the user's work:
+   - Search for topics, tools, or repos the user has been working with
+   - Find team discussions that relate to the user's patterns or struggles
+   - Use semantic search first for relevance, then SQL for precise filtering if needed
 
 ${teamContext || ''}
 
@@ -536,6 +582,9 @@ export async function runAnalysis(
               result = executeSqlTool(input.query, dbPath, sourcesDbPath)
             } else if (block.name === 'schema') {
               result = executeSchemaTools()
+            } else if (block.name === 'semantic_search') {
+              const input = block.input as { query: string; topk?: number; dataSourceId?: string }
+              result = await executeSemanticSearchTool(input.query, input.topk, input.dataSourceId)
             } else {
               result = `Unknown tool: ${block.name}`
             }
@@ -741,6 +790,9 @@ Be specific, actionable, and integrate the human answers into a better analysis.
               result = executeSqlTool((block.input as { query: string }).query, dbPath, sourcesDbPath)
             } else if (block.name === 'schema') {
               result = executeSchemaTools()
+            } else if (block.name === 'semantic_search') {
+              const input = block.input as { query: string; topk?: number; dataSourceId?: string }
+              result = await executeSemanticSearchTool(input.query, input.topk, input.dataSourceId)
             } else {
               result = `Unknown tool: ${block.name}`
             }

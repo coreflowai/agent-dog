@@ -8,6 +8,7 @@ import { createInsightScheduler, type InsightScheduler, createCuriosityScheduler
 import { createSlackBot, type SlackBot } from './slack'
 import { getIntegrationConfig } from './db/slack'
 import { initSourcesDb } from './db/sources'
+import { initVectorStore, closeVectorStore } from './db/vectors'
 import { createSourceManager, type SourceManager } from './sources'
 import path from 'path'
 import { execSync } from 'child_process'
@@ -50,6 +51,14 @@ export function createServer(options: ServerOptions = {}) {
   // Initialize separate sources DB for external context data
   const sourcesDbPath = process.env.SOURCES_DB ?? 'sources.db'
   initSourcesDb(sourcesDbPath)
+
+  // Initialize vector store for semantic search (graceful — non-blocking if unavailable)
+  const zvecDataPath = process.env.ZVEC_DATA_PATH ?? './zvec-data'
+  try {
+    initVectorStore(zvecDataPath)
+  } catch (err) {
+    console.warn('[VectorStore] Failed to initialize (semantic search disabled):', err)
+  }
 
   let auth: Auth | null = null
   let authReady: Promise<void> | null = null
@@ -343,6 +352,7 @@ export function createServer(options: ServerOptions = {}) {
       if (slackBot) {
         try { await slackBot.stop() } catch {}
       }
+      closeVectorStore()
       io.close()
       server.stop(true)
     },
