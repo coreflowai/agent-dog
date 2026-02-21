@@ -40,7 +40,12 @@ async function main() {
   }
 
   // Initialize vector store
-  initVectorStore(zvecDataPath)
+  const ok = await initVectorStore(zvecDataPath)
+  if (!ok) {
+    console.error('[Backfill] Failed to initialize vector store. Aborting.')
+    db.close()
+    process.exit(1)
+  }
 
   let processed = 0
   const startTime = Date.now()

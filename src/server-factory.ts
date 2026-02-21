@@ -52,13 +52,11 @@ export function createServer(options: ServerOptions = {}) {
   const sourcesDbPath = process.env.SOURCES_DB ?? 'sources.db'
   initSourcesDb(sourcesDbPath)
 
-  // Initialize vector store for semantic search (graceful — non-blocking if unavailable)
+  // Initialize vector store for semantic search (async, non-blocking)
   const zvecDataPath = process.env.ZVEC_DATA_PATH ?? './zvec-data'
-  try {
-    initVectorStore(zvecDataPath)
-  } catch (err) {
+  initVectorStore(zvecDataPath).catch(err => {
     console.warn('[VectorStore] Failed to initialize (semantic search disabled):', err)
-  }
+  })
 
   let auth: Auth | null = null
   let authReady: Promise<void> | null = null

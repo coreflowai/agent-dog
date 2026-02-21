@@ -1,13 +1,3 @@
-import {
-  ZVecCreateAndOpen,
-  ZVecOpen,
-  ZVecCollectionSchema,
-  ZVecDataType,
-  ZVecMetricType,
-  ZVecIndexType,
-  isZVecError,
-  type ZVecCollection,
-} from '@zvec/zvec'
 import { getEmbeddings, getEmbeddingDimension, isEmbeddingConfigured, prepareText } from './embeddings'
 
 export type SearchResult = {
@@ -19,48 +9,69 @@ export type SearchResult = {
   score: number
 }
 
-let _collection: ZVecCollection | null = null
+// Dynamic zvec module — loaded lazily to avoid crashing if native bindings aren't available
+let zvec: typeof import('@zvec/zvec') | null = null
+let _collection: any = null
+let _available = false
 
 const COLLECTION_NAME = 'source_entries'
 
-function buildSchema() {
-  return new ZVecCollectionSchema({
+async function loadZvec() {
+  if (zvec) return zvec
+  try {
+    zvec = await import('@zvec/zvec')
+    return zvec
+  } catch (err) {
+    console.warn('[VectorStore] zvec native module not available:', err)
+    return null
+  }
+}
+
+function buildSchema(z: typeof import('@zvec/zvec')) {
+  return new z.ZVecCollectionSchema({
     name: COLLECTION_NAME,
     vectors: {
       name: 'embedding',
-      dataType: ZVecDataType.VECTOR_FP32,
+      dataType: z.ZVecDataType.VECTOR_FP32,
       dimension: getEmbeddingDimension(),
       indexParams: {
-        indexType: ZVecIndexType.HNSW,
-        metricType: ZVecMetricType.COSINE,
+        indexType: z.ZVecIndexType.HNSW,
+        metricType: z.ZVecMetricType.COSINE,
       },
     },
     fields: [
-      { name: 'content', dataType: ZVecDataType.STRING },
-      { name: 'author', dataType: ZVecDataType.STRING, nullable: true },
-      { name: 'data_source_id', dataType: ZVecDataType.STRING },
-      { name: 'timestamp', dataType: ZVecDataType.INT64 },
+      { name: 'content', dataType: z.ZVecDataType.STRING },
+      { name: 'author', dataType: z.ZVecDataType.STRING, nullable: true },
+      { name: 'data_source_id', dataType: z.ZVecDataType.STRING },
+      { name: 'timestamp', dataType: z.ZVecDataType.INT64 },
     ],
   })
 }
 
 /**
  * Initialize the vector store. Creates or opens the collection.
+ * Returns false if zvec is not available (e.g. native bindings missing).
  */
-export function initVectorStore(dataPath: string): void {
-  if (_collection) return
+export async function initVectorStore(dataPath: string): Promise<boolean> {
+  if (_collection) return true
+
+  const z = await loadZvec()
+  if (!z) return false
 
   try {
-    _collection = ZVecOpen(dataPath)
+    _collection = z.ZVecOpen(dataPath)
+    _available = true
     console.log(`[VectorStore] Opened existing collection at ${dataPath}`)
+    return true
   } catch (err) {
     // Collection doesn't exist yet — create it
-    if (isZVecError(err) && (err.code === 'ZVEC_NOT_FOUND' || err.code === 'ZVEC_INVALID_ARGUMENT')) {
-      _collection = ZVecCreateAndOpen(dataPath, buildSchema())
+    if (z.isZVecError(err) && (err.code === 'ZVEC_NOT_FOUND' || err.code === 'ZVEC_INVALID_ARGUMENT')) {
+      _collection = z.ZVecCreateAndOpen(dataPath, buildSchema(z))
+      _available = true
       console.log(`[VectorStore] Created new collection at ${dataPath}`)
-    } else {
-      throw err
+      return true
     }
+    throw err
   }
 }
 
@@ -73,6 +84,7 @@ export function closeVectorStore(): void {
       _collection.closeSync()
     } catch {}
     _collection = null
+    _available = false
   }
 }
 
@@ -159,7 +171,7 @@ export async function semanticSearch(
     outputFields: ['content', 'author', 'data_source_id', 'timestamp'],
   })
 
-  return results.map(doc => ({
+  return results.map((doc: any) => ({
     id: doc.id,
     content: doc.fields.content ?? '',
     author: doc.fields.author || null,
