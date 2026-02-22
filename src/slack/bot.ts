@@ -209,7 +209,7 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
       } catch {}
     })
 
-    // Thread reply listener — accumulates replies and asks permission to refine
+    // Message listener — handles DMs and thread replies
     a.message(async ({ message, client }) => {
       // Dispatch to registered channel listeners (for data source ingestion)
       if ('channel' in message && message.channel) {
@@ -219,9 +219,67 @@ export function createSlackBot(options: SlackBotOptions): SlackBot {
         }
       }
 
-      if (!('thread_ts' in message) || !message.thread_ts) return
       if (!('channel' in message) || !message.channel) return
       if ('bot_id' in message && message.bot_id) return
+
+      // Handle direct messages (DMs) — treat top-level DMs like @mentions
+      const isDM = 'channel_type' in message && (message as any).channel_type === 'im'
+      if (isDM && !('thread_ts' in message && message.thread_ts)) {
+        if (!chatHandler) return
+        const text = ('text' in message && message.text) ? message.text : ''
+        if (!text && !('files' in message && Array.isArray((message as any).files) && (message as any).files.length > 0)) return
+
+        const threadTs = ('ts' in message && message.ts) ? message.ts : undefined
+        if (!threadTs) return
+
+        chatHandler.registerThread(threadTs)
+
+        let userName: string | undefined
+        if ('user' in message && message.user) {
+          try {
+            const userInfo = await client.users.info({ user: message.user })
+            userName = userInfo.user?.real_name || userInfo.user?.name
+          } catch {}
+        }
+
+        const images = await extractImages(message)
+
+        // Show hourglass while processing
+        try {
+          await client.reactions.add({ channel: message.channel, timestamp: threadTs, name: 'hourglass' })
+        } catch {}
+
+        try {
+          const msgText = text || '(shared an image)'
+          const reply = await chatHandler.handleMessage(threadTs, msgText, userName, images.length > 0 ? images : undefined)
+          const chunks = chunkForSlack(reply)
+          for (const chunk of chunks) {
+            await client.chat.postMessage({
+              channel: message.channel,
+              thread_ts: threadTs,
+              text: chunk,
+            })
+          }
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err)
+          console.error('[SlackBot] DM handler error:', err)
+          try {
+            await client.chat.postMessage({
+              channel: message.channel,
+              thread_ts: threadTs,
+              text: `Something went wrong: \`${errMsg}\``,
+            })
+          } catch {}
+        }
+
+        // Remove hourglass
+        try {
+          await client.reactions.remove({ channel: message.channel, timestamp: threadTs, name: 'hourglass' })
+        } catch {}
+        return
+      }
+
+      if (!('thread_ts' in message) || !message.thread_ts) return
       const hasText = 'text' in message && message.text
       const hasFiles = 'files' in message && Array.isArray((message as any).files) && (message as any).files.length > 0
       if (!hasText && !hasFiles) return

@@ -152,15 +152,44 @@
     .insight-content > h2:first-child { margin-top: 0; }
 
     /* Action items section at top of detail */
-    .insight-actions-section { margin-bottom: 16px; }
-    .insight-actions-section h2 {
-      font-size: 16px; font-weight: 600; margin-bottom: 12px;
-      color: var(--color-base-content); letter-spacing: -0.01em;
-      padding-bottom: 8px; border-bottom: 1px solid var(--color-base-300);
+    .insight-actions-section { margin-bottom: 20px; }
+    .insight-actions-title {
+      font-size: 13px; font-weight: 600; margin-bottom: 10px;
+      color: color-mix(in oklch, var(--color-base-content) 50%, transparent);
+      text-transform: uppercase; letter-spacing: 0.05em;
     }
-    .insight-actions-section ul { margin-left: 20px; margin-bottom: 8px; }
-    .insight-actions-section li { margin-bottom: 6px; font-size: 14px; line-height: 1.6; }
-    .insight-actions-section strong { font-weight: 600; color: var(--color-base-content); }
+    .insight-actions-list { display: flex; flex-direction: column; gap: 6px; }
+    .insight-action-card {
+      display: flex; align-items: baseline; gap: 10px;
+      padding: 10px 12px; border-radius: 8px;
+      background: color-mix(in oklch, var(--color-base-content) 3%, transparent);
+      border: 1px solid var(--color-base-300);
+    }
+    .insight-action-badges { display: flex; gap: 6px; flex-shrink: 0; }
+    .insight-prio-badge, .insight-cat-badge {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+    }
+    .insight-prio-badge.high {
+      background: color-mix(in oklch, var(--color-error) 15%, transparent);
+      color: var(--color-error);
+    }
+    .insight-prio-badge.medium {
+      background: color-mix(in oklch, var(--color-warning) 15%, transparent);
+      color: var(--color-warning);
+    }
+    .insight-prio-badge.low {
+      background: color-mix(in oklch, var(--color-success) 15%, transparent);
+      color: var(--color-success);
+    }
+    .insight-cat-badge {
+      background: color-mix(in oklch, var(--color-base-content) 8%, transparent);
+      color: color-mix(in oklch, var(--color-base-content) 55%, transparent);
+    }
+    .insight-action-text {
+      font-size: 13px; line-height: 1.5;
+      color: color-mix(in oklch, var(--color-base-content) 85%, transparent);
+    }
 
     /* Collapsible reasoning details */
     .insight-reasoning-details {

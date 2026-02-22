@@ -1848,12 +1848,19 @@ function renderInsightDetail(id) {
   // Action items section (from structured data)
   if (actions.length > 0) {
     detailHtml += '<div class="insight-actions-section">'
-    detailHtml += '<h2>Action Items</h2><ul>'
+    detailHtml += '<h3 class="insight-actions-title">Action Items</h3>'
+    detailHtml += '<div class="insight-actions-list">'
     for (const a of actions) {
-      const dot = a.priority === 'high' ? '🔴' : a.priority === 'medium' ? '🟡' : '🟢'
-      detailHtml += `<li>${dot} <strong>[${esc(a.category)}]</strong> ${esc(a.action)}</li>`
+      const prioClass = a.priority === 'high' ? 'high' : a.priority === 'medium' ? 'medium' : 'low'
+      detailHtml += `<div class="insight-action-card">
+        <div class="insight-action-badges">
+          <span class="insight-prio-badge ${prioClass}">${esc(a.priority)}</span>
+          <span class="insight-cat-badge">${esc(a.category)}</span>
+        </div>
+        <span class="insight-action-text">${esc(a.action)}</span>
+      </div>`
     }
-    detailHtml += '</ul></div>'
+    detailHtml += '</div></div>'
   }
 
   // Reasoning / full analysis as collapsible
