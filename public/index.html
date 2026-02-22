@@ -254,6 +254,9 @@
       <button id="btn-insights" class="btn btn-xs btn-ghost" title="View insights (i)">
         <i data-lucide="lightbulb" class="w-3.5 h-3.5"></i>
       </button>
+      <button id="btn-cron" class="btn btn-xs btn-ghost" title="Scheduled tasks (c)">
+        <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+      </button>
       <button id="btn-integrations" class="btn btn-xs btn-ghost" title="Integrations">
         <i data-lucide="plug" class="w-3.5 h-3.5"></i>
       </button>
@@ -830,6 +833,107 @@
       </div>
     </div>
   </div> <!-- /integrations-view -->
+
+  <!-- Cron Jobs View -->
+  <div id="cron-view" class="h-[calc(100vh-2.5rem)] flex hidden">
+    <div id="cron-sidebar" class="w-72 sm:w-80 border-r border-base-300 overflow-y-auto bg-base-100 flex flex-col">
+      <div class="px-3 py-2 border-b border-base-300 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <button id="cron-back" class="btn btn-xs btn-ghost btn-square"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></button>
+          <span class="font-semibold text-[10px] opacity-50 uppercase tracking-wider">Scheduled Tasks</span>
+          <span id="cron-count" class="badge badge-sm badge-ghost text-[10px]">0</span>
+        </div>
+        <button id="btn-add-cron" class="btn btn-xs btn-primary gap-1">
+          <i data-lucide="plus" class="w-3 h-3"></i> New
+        </button>
+      </div>
+      <div id="cron-list" class="flex-1 overflow-y-auto"></div>
+    </div>
+    <div id="cron-main" class="flex-1 flex flex-col overflow-hidden">
+      <!-- Empty state -->
+      <div id="cron-empty" class="flex-1 flex items-center justify-center">
+        <div class="text-center opacity-40">
+          <i data-lucide="clock" class="w-10 h-10 mx-auto mb-3 stroke-1"></i>
+          <p class="text-sm">Select a job or create a new one</p>
+        </div>
+      </div>
+      <!-- Add/Edit form -->
+      <div id="cron-form" class="flex-1 overflow-y-auto hidden">
+        <div class="max-w-xl mx-auto px-5 sm:px-8 py-6 space-y-4">
+          <h2 id="cron-form-title" class="text-base font-bold">New Scheduled Task</h2>
+          <div>
+            <label class="label text-xs py-0.5">Name</label>
+            <input type="text" id="cron-name" class="input input-sm input-bordered w-full text-xs" placeholder="e.g. Daily status report" />
+          </div>
+          <div>
+            <label class="label text-xs py-0.5">Schedule (natural language)</label>
+            <input type="text" id="cron-schedule" class="input input-sm input-bordered w-full text-xs" placeholder="e.g. every morning at 9am" />
+            <div id="cron-schedule-preview" class="text-[10px] mt-1 opacity-50 h-4"></div>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5">Timezone</label>
+            <select id="cron-timezone" class="select select-sm select-bordered w-full text-xs">
+              <option value="UTC">UTC</option>
+              <option value="America/New_York">America/New_York (ET)</option>
+              <option value="America/Chicago">America/Chicago (CT)</option>
+              <option value="America/Denver">America/Denver (MT)</option>
+              <option value="America/Los_Angeles">America/Los_Angeles (PT)</option>
+              <option value="Europe/London">Europe/London (GMT/BST)</option>
+              <option value="Europe/Paris">Europe/Paris (CET)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+              <option value="Asia/Shanghai">Asia/Shanghai (CST)</option>
+              <option value="Asia/Taipei">Asia/Taipei (CST)</option>
+              <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+            </select>
+          </div>
+          <div>
+            <label class="label text-xs py-0.5">Prompt</label>
+            <textarea id="cron-prompt" class="textarea textarea-bordered w-full text-xs" rows="6" placeholder="What should the AI do on each run?&#10;e.g. Check how many active sessions there are and summarize any errors from the last hour."></textarea>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="cron-notify-slack" class="checkbox checkbox-sm" />
+            <label for="cron-notify-slack" class="text-xs">Notify Slack on completion</label>
+          </div>
+          <input type="hidden" id="cron-edit-id" value="" />
+          <div class="flex gap-2 pt-2">
+            <button id="btn-save-cron" class="btn btn-sm btn-primary">Save</button>
+            <button id="btn-cancel-cron" class="btn btn-sm btn-ghost">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <!-- Job detail -->
+      <div id="cron-detail" class="flex-1 overflow-y-auto hidden">
+        <div class="max-w-xl mx-auto px-5 sm:px-8 py-6 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 id="cron-detail-name" class="text-base font-bold"></h2>
+            <div class="flex gap-1">
+              <button id="btn-trigger-cron" class="btn btn-xs btn-ghost" title="Run now"><i data-lucide="play" class="w-3.5 h-3.5"></i></button>
+              <button id="btn-edit-cron" class="btn btn-xs btn-ghost" title="Edit"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+              <button id="btn-toggle-cron" class="btn btn-xs btn-ghost" title="Toggle enable/disable"><i data-lucide="power" class="w-3.5 h-3.5"></i></button>
+              <button id="btn-delete-cron" class="btn btn-xs btn-ghost text-error" title="Delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div><span class="opacity-50">Schedule:</span> <span id="cron-detail-schedule" class="font-mono"></span></div>
+            <div><span class="opacity-50">Cron:</span> <span id="cron-detail-expression" class="font-mono"></span></div>
+            <div><span class="opacity-50">Timezone:</span> <span id="cron-detail-timezone"></span></div>
+            <div><span class="opacity-50">Status:</span> <span id="cron-detail-enabled" class="badge badge-xs"></span></div>
+            <div><span class="opacity-50">Total runs:</span> <span id="cron-detail-runs"></span></div>
+            <div><span class="opacity-50">Last run:</span> <span id="cron-detail-lastrun"></span></div>
+            <div><span class="opacity-50">Next run:</span> <span id="cron-detail-nextrun"></span></div>
+            <div><span class="opacity-50">Last status:</span> <span id="cron-detail-status" class="badge badge-xs"></span></div>
+          </div>
+          <div>
+            <span class="text-xs opacity-50">Prompt:</span>
+            <div id="cron-detail-prompt" class="text-xs bg-base-200 rounded-lg p-3 mt-1 whitespace-pre-wrap font-mono"></div>
+          </div>
+          <div id="cron-detail-session-link" class="hidden">
+            <a id="cron-detail-session-href" class="text-xs link link-primary" href="#">View last run session &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div> <!-- /cron-view -->
 
   <!-- Invite Dialog -->
   <dialog id="invite-dialog" class="modal">

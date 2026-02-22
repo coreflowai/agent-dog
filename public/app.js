@@ -10,7 +10,7 @@ let selectedSessionIdx = -1
 let selectedEventIdx = -1
 let displayRows = []
 let focusArea = 'sessions' // 'sessions' | 'events'
-let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations' | 'feed'
+let currentView = 'bubbles' // 'bubbles' | 'list' | 'insights' | 'integrations' | 'feed' | 'cron'
 const STALE_TIMEOUT = 7 * 24 * 60 * 60 * 1000 // 7 days
 
 // Virtual scrolling constants
@@ -28,6 +28,7 @@ const rowPool = []              // recycled elements
 const ICON_CLAUDE = `<svg width="14" height="14" viewBox="0 0 248 248" fill="none"><path d="M52.4285 162.873L98.7844 136.879L99.5485 134.602L98.7844 133.334H96.4921L88.7237 132.862L62.2346 132.153L39.3113 131.207L17.0249 130.026L11.4214 128.844L6.2 121.873L6.7094 118.447L11.4214 115.257L18.171 115.847L33.0711 116.911L55.485 118.447L71.6586 119.392L95.728 121.873H99.5485L100.058 120.337L98.7844 119.392L97.7656 118.447L74.5877 102.732L49.4995 86.1905L36.3823 76.62L29.3779 71.7757L25.8121 67.2858L24.2839 57.3608L30.6515 50.2716L39.3113 50.8623L41.4763 51.4531L50.2636 58.1879L68.9842 72.7209L93.4357 90.6804L97.0015 93.6343L98.4374 92.6652L98.6571 91.9801L97.0015 89.2625L83.757 65.2772L69.621 40.8192L63.2534 30.6579L61.5978 24.632C60.9565 22.1032 60.579 20.0111 60.579 17.4246L67.8381 7.49965L71.9133 6.19995L81.7193 7.49965L85.7946 11.0443L91.9074 24.9865L101.714 46.8451L116.996 76.62L121.453 85.4816L123.873 93.6343L124.764 96.1155H126.292V94.6976L127.566 77.9197L129.858 57.3608L132.15 30.8942L132.915 23.4505L136.608 14.4708L143.994 9.62643L149.725 12.344L154.437 19.0788L153.8 23.4505L150.998 41.6463L145.522 70.1215L141.957 89.2625H143.994L146.414 86.7813L156.093 74.0206L172.266 53.698L179.398 45.6635L187.803 36.802L193.152 32.5484H203.34L210.726 43.6549L207.415 55.1159L196.972 68.3492L188.312 79.5739L175.896 96.2095L168.191 109.585L168.882 110.689L170.738 110.53L198.755 104.504L213.91 101.787L231.994 98.7149L240.144 102.496L241.036 106.395L237.852 114.311L218.495 119.037L195.826 123.645L162.07 131.592L161.696 131.893L162.137 132.547L177.36 133.925L183.855 134.279H199.774L229.447 136.524L237.215 141.605L241.8 147.867L241.036 152.711L229.065 158.737L213.019 154.956L175.45 145.977L162.587 142.787H160.805V143.85L171.502 154.366L191.242 172.089L215.82 195.011L217.094 200.682L213.91 205.172L210.599 204.699L188.949 188.394L180.544 181.069L161.696 165.118H160.422V166.772L164.752 173.152L187.803 207.771L188.949 218.405L187.294 221.832L181.308 223.959L174.813 222.777L161.187 203.754L147.305 182.486L136.098 163.345L134.745 164.2L128.075 235.42L125.019 239.082L117.887 241.8L111.902 237.31L108.718 229.984L111.902 215.452L115.722 196.547L118.779 181.541L121.58 162.873L123.291 156.636L123.14 156.219L121.773 156.449L107.699 175.752L86.304 204.699L69.3663 222.777L65.291 224.431L58.2867 220.768L58.9235 214.27L62.8713 208.48L86.304 178.705L100.44 160.155L109.551 149.507L109.462 147.967L108.959 147.924L46.6977 188.512L35.6182 189.93L30.7788 185.44L31.4156 178.115L33.7079 175.752L52.4285 162.873Z" fill="#D97757"/></svg>`
 const ICON_OPENAI = `<svg width="14" height="14" viewBox="29 29 122 122" fill="currentColor"><path d="M75.91 73.628V62.232c0-.96.36-1.68 1.199-2.16l22.912-13.194c3.119-1.8 6.838-2.639 10.676-2.639 14.394 0 23.511 11.157 23.511 23.032 0 .839 0 1.799-.12 2.758l-23.752-13.914c-1.439-.84-2.879-.84-4.318 0L75.91 73.627Zm53.499 44.383v-27.23c0-1.68-.72-2.88-2.159-3.719L97.142 69.55l9.836-5.638c.839-.48 1.559-.48 2.399 0l22.912 13.195c6.598 3.839 11.035 11.995 11.035 19.912 0 9.116-5.397 17.513-13.915 20.992v.001Zm-60.577-23.99-9.836-5.758c-.84-.48-1.2-1.2-1.2-2.16v-26.39c0-12.834 9.837-22.55 23.152-22.55 5.039 0 9.716 1.679 13.676 4.678L70.993 55.516c-1.44.84-2.16 2.039-2.16 3.719v34.787-.002Zm21.173 12.234L75.91 98.339V81.546l14.095-7.917 14.094 7.917v16.793l-14.094 7.916Zm9.056 36.467c-5.038 0-9.716-1.68-13.675-4.678l23.631-13.676c1.439-.839 2.159-2.038 2.159-3.718V85.863l9.956 5.757c.84.48 1.2 1.2 1.2 2.16v26.389c0 12.835-9.957 22.552-23.27 22.552v.001Zm-28.43-26.75L47.72 102.778c-6.599-3.84-11.036-11.996-11.036-19.913 0-9.236 5.518-17.513 14.034-20.992v27.35c0 1.68.72 2.879 2.16 3.718l29.989 17.393-9.837 5.638c-.84.48-1.56.48-2.399 0Zm-1.318 19.673c-13.555 0-23.512-10.196-23.512-22.792 0-.959.12-1.919.24-2.879l23.63 13.675c1.44.84 2.88.84 4.32 0l30.108-17.392v11.395c0 .96-.361 1.68-1.2 2.16l-22.912 13.194c-3.119 1.8-6.837 2.639-10.675 2.639Z"/></svg>`
 const ICON_OPENCODE = `<img src="https://opencode.ai/favicon-v3.ico" width="14" height="14" style="display:inline-block" />`
+const ICON_SANDBOX = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M12 12h.01"/><path d="M17 12h.01"/><path d="M7 12h.01"/></svg>`
 
 // DOM
 const sessionList = document.getElementById('session-list')
@@ -182,6 +183,13 @@ function routeFromUrl() {
     return
   }
 
+  // /cron
+  if (path === '/cron') {
+    switchView('cron')
+    _skipPush = false
+    return
+  }
+
   // Default: / → bubbles
   switchView('bubbles')
   _skipPush = false
@@ -200,6 +208,8 @@ function switchView(view) {
   integrationsView.classList.add('hidden')
   const feedViewEl = document.getElementById('feed-view')
   if (feedViewEl) feedViewEl.classList.add('hidden')
+  const cronViewEl = document.getElementById('cron-view')
+  if (cronViewEl) cronViewEl.classList.add('hidden')
 
   if (view === 'bubbles') {
     bubbleView.classList.remove('hidden')
@@ -225,16 +235,22 @@ function switchView(view) {
       loadFeedEntries()
     }
     if (!_skipPush) navigate('/feed')
+  } else if (view === 'cron') {
+    if (cronViewEl) cronViewEl.classList.remove('hidden')
+    if (!cronLoaded) loadCronJobs()
+    if (!_skipPush) navigate('/cron')
   }
 }
 
 btnTitle.addEventListener('click', () => switchView('bubbles'))
 document.getElementById('btn-feed').addEventListener('click', () => switchView('feed'))
+document.getElementById('btn-cron').addEventListener('click', () => switchView('cron'))
 btnInsights.addEventListener('click', () => switchView('insights'))
 btnIntegrations.addEventListener('click', () => switchView('integrations'))
 integrationsBack.addEventListener('click', () => switchView('bubbles'))
 insightsBack.addEventListener('click', () => switchView('bubbles'))
 document.getElementById('feed-back').addEventListener('click', () => switchView('bubbles'))
+document.getElementById('cron-back').addEventListener('click', () => switchView('bubbles'))
 
 // --- User filter (DaisyUI dropdown) ---
 function setUserFilter(value) {
@@ -448,6 +464,12 @@ document.addEventListener('keydown', (e) => {
     return
   }
 
+  if (e.key === 'c' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault()
+    switchView(currentView === 'cron' ? 'bubbles' : 'cron')
+    return
+  }
+
   if (e.key === 'Escape') {
     e.preventDefault()
     if (currentView === 'list' && !detailPanel.classList.contains('hidden')) {
@@ -587,7 +609,7 @@ function renderSessionList() {
     for (const s of repoSessions) {
       const i = flatIdx++
       const isActive = s.id === currentSessionId
-      const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
+      const icon = s.source === 'claude-code' ? ICON_CLAUDE : s.source === 'opencode' ? ICON_OPENCODE : s.source === 'sandbox' ? ICON_SANDBOX : ICON_OPENAI
       const isWaitingForUser = s.status === 'active' && isSessionWaiting(s)
       const status = s.status === 'error' ? '<span class="text-error text-[10px]">err</span>'
         : s.status === 'archived' ? '<span class="opacity-40 text-[10px]">archived</span>'
@@ -1484,7 +1506,7 @@ function createBubbleElement(session, category) {
 }
 
 function updateBubbleContent(el, session) {
-  const icon = session.source === 'claude-code' ? ICON_CLAUDE : session.source === 'opencode' ? ICON_OPENCODE : ICON_OPENAI
+  const icon = session.source === 'claude-code' ? ICON_CLAUDE : session.source === 'opencode' ? ICON_OPENCODE : session.source === 'sandbox' ? ICON_SANDBOX : ICON_OPENAI
   const user = session.metadata?.user
   const userName = user?.githubUsername || user?.name || user?.osUser || ''
   const title = session.metadata?.title || userName || (session.id.length > 14 ? session.id.slice(0, 14) + '..' : session.id)
@@ -3220,6 +3242,288 @@ function renderThemeMenu() {
     const active = t === current ? 'active' : ''
     return `<li><a class="text-[11px] ${active}" onclick="setTheme('${t}')">${t}</a></li>`
   }).join('')
+}
+
+// --- Cron Jobs ---
+
+let cronJobs = []
+let cronLoaded = false
+let selectedCronId = null
+let schedulePreviewTimer = null
+
+async function loadCronJobs() {
+  try {
+    const res = await fetch('/api/cron/jobs', { credentials: 'include' })
+    cronJobs = await res.json()
+    cronLoaded = true
+    renderCronJobs()
+  } catch (err) {
+    console.error('Failed to load cron jobs:', err)
+  }
+}
+
+function renderCronJobs() {
+  const list = document.getElementById('cron-list')
+  const count = document.getElementById('cron-count')
+  if (!list || !count) return
+  count.textContent = cronJobs.length
+
+  if (cronJobs.length === 0) {
+    list.innerHTML = '<div class="flex items-center justify-center h-32 opacity-40 text-xs">No scheduled tasks yet</div>'
+    return
+  }
+
+  list.innerHTML = cronJobs.map(job => {
+    const active = job.id === selectedCronId
+    const statusDot = job.enabled
+      ? (job.lastRunStatus === 'running' ? 'bg-warning animate-pulse' : job.lastRunStatus === 'error' ? 'bg-error' : 'bg-success')
+      : 'bg-base-300'
+    const lastRun = job.lastRunAt ? timeAgo(job.lastRunAt) : 'never'
+    return `<div class="px-3 py-2.5 cursor-pointer border-b border-base-200 hover:bg-base-200/50 transition-colors ${active ? 'bg-base-200/50 border-l-3 border-l-primary' : 'border-l-3 border-l-transparent'}" data-cron-id="${job.id}">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-2 h-2 rounded-full ${statusDot} flex-shrink-0"></span>
+        <span class="text-xs font-medium truncate flex-1">${esc(job.name)}</span>
+        <span class="text-[10px] opacity-40">${job.totalRuns} runs</span>
+      </div>
+      <div class="text-[10px] opacity-50 mt-0.5 ml-4">${esc(job.scheduleText)} · last: ${lastRun}</div>
+    </div>`
+  }).join('')
+
+  // Click handlers via delegation
+  list.querySelectorAll('[data-cron-id]').forEach(el => {
+    el.addEventListener('click', () => selectCronJob(el.dataset.cronId))
+  })
+}
+
+function selectCronJob(id) {
+  selectedCronId = id
+  renderCronJobs()
+  const job = cronJobs.find(j => j.id === id)
+  if (!job) return
+
+  const form = document.getElementById('cron-form')
+  const detail = document.getElementById('cron-detail')
+  const empty = document.getElementById('cron-empty')
+  form.classList.add('hidden')
+  detail.classList.remove('hidden')
+  empty.classList.add('hidden')
+
+  document.getElementById('cron-detail-name').textContent = job.name
+  document.getElementById('cron-detail-schedule').textContent = job.scheduleText
+  document.getElementById('cron-detail-expression').textContent = job.cronExpression
+  document.getElementById('cron-detail-timezone').textContent = job.timezone
+  document.getElementById('cron-detail-runs').textContent = job.totalRuns
+  document.getElementById('cron-detail-lastrun').textContent = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : 'never'
+  document.getElementById('cron-detail-nextrun').textContent = job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : '-'
+  document.getElementById('cron-detail-prompt').textContent = job.prompt
+
+  const enabledBadge = document.getElementById('cron-detail-enabled')
+  enabledBadge.textContent = job.enabled ? 'enabled' : 'disabled'
+  enabledBadge.className = `badge badge-xs ${job.enabled ? 'badge-success' : 'badge-ghost'}`
+
+  const statusBadge = document.getElementById('cron-detail-status')
+  if (job.lastRunStatus) {
+    statusBadge.textContent = job.lastRunStatus
+    statusBadge.className = `badge badge-xs ${job.lastRunStatus === 'success' ? 'badge-success' : job.lastRunStatus === 'error' ? 'badge-error' : 'badge-warning'}`
+  } else {
+    statusBadge.textContent = '-'
+    statusBadge.className = 'badge badge-xs badge-ghost'
+  }
+
+  const sessionLink = document.getElementById('cron-detail-session-link')
+  const sessionHref = document.getElementById('cron-detail-session-href')
+  if (job.lastRunSessionId) {
+    sessionLink.classList.remove('hidden')
+    sessionHref.href = `/sessions/${job.lastRunSessionId}`
+    sessionHref.onclick = (e) => {
+      e.preventDefault()
+      switchView('list')
+      selectSession(job.lastRunSessionId)
+      navigate(`/sessions/${job.lastRunSessionId}`)
+    }
+  } else {
+    sessionLink.classList.add('hidden')
+  }
+}
+
+function showCronForm(job) {
+  const form = document.getElementById('cron-form')
+  const detail = document.getElementById('cron-detail')
+  const empty = document.getElementById('cron-empty')
+  form.classList.remove('hidden')
+  detail.classList.add('hidden')
+  empty.classList.add('hidden')
+
+  document.getElementById('cron-form-title').textContent = job ? 'Edit Scheduled Task' : 'New Scheduled Task'
+  document.getElementById('cron-name').value = job?.name || ''
+  document.getElementById('cron-schedule').value = job?.scheduleText || ''
+  document.getElementById('cron-timezone').value = job?.timezone || 'UTC'
+  document.getElementById('cron-prompt').value = job?.prompt || ''
+  document.getElementById('cron-notify-slack').checked = job?.notifySlack || false
+  document.getElementById('cron-edit-id').value = job?.id || ''
+  document.getElementById('cron-schedule-preview').textContent = job ? `${job.cronExpression} — ${job.scheduleText}` : ''
+}
+
+// New button
+document.getElementById('btn-add-cron')?.addEventListener('click', () => {
+  selectedCronId = null
+  renderCronJobs()
+  showCronForm(null)
+})
+
+// Cancel button
+document.getElementById('btn-cancel-cron')?.addEventListener('click', () => {
+  const form = document.getElementById('cron-form')
+  const empty = document.getElementById('cron-empty')
+  form.classList.add('hidden')
+  if (selectedCronId) {
+    selectCronJob(selectedCronId)
+  } else {
+    empty.classList.remove('hidden')
+  }
+})
+
+// Save button
+document.getElementById('btn-save-cron')?.addEventListener('click', async () => {
+  const name = document.getElementById('cron-name').value.trim()
+  const scheduleText = document.getElementById('cron-schedule').value.trim()
+  const timezone = document.getElementById('cron-timezone').value
+  const prompt = document.getElementById('cron-prompt').value.trim()
+  const notifySlack = document.getElementById('cron-notify-slack').checked
+  const editId = document.getElementById('cron-edit-id').value
+
+  if (!name || !scheduleText || !prompt) {
+    alert('Please fill in name, schedule, and prompt')
+    return
+  }
+
+  const btn = document.getElementById('btn-save-cron')
+  btn.disabled = true
+  btn.textContent = 'Saving...'
+
+  try {
+    if (editId) {
+      const res = await fetch(`/api/cron/jobs/${editId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, scheduleText, timezone, prompt, notifySlack }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to update')
+    } else {
+      const res = await fetch('/api/cron/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name, scheduleText, timezone, prompt, notifySlack }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error || 'Failed to create')
+      const job = await res.json()
+      selectedCronId = job.id
+    }
+    await loadCronJobs()
+    if (selectedCronId) selectCronJob(selectedCronId)
+  } catch (err) {
+    alert('Error: ' + err.message)
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Save'
+  }
+})
+
+// Detail action buttons
+document.getElementById('btn-trigger-cron')?.addEventListener('click', async () => {
+  if (!selectedCronId) return
+  const btn = document.getElementById('btn-trigger-cron')
+  btn.disabled = true
+  try {
+    const res = await fetch(`/api/cron/jobs/${selectedCronId}/trigger`, {
+      method: 'POST', credentials: 'include',
+    })
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed')
+    // Refresh after a short delay to show running state
+    setTimeout(() => loadCronJobs().then(() => { if (selectedCronId) selectCronJob(selectedCronId) }), 1000)
+  } catch (err) {
+    alert('Error: ' + err.message)
+  } finally {
+    btn.disabled = false
+  }
+})
+
+document.getElementById('btn-edit-cron')?.addEventListener('click', () => {
+  if (!selectedCronId) return
+  const job = cronJobs.find(j => j.id === selectedCronId)
+  if (job) showCronForm(job)
+})
+
+document.getElementById('btn-toggle-cron')?.addEventListener('click', async () => {
+  if (!selectedCronId) return
+  try {
+    const res = await fetch(`/api/cron/jobs/${selectedCronId}/toggle`, {
+      method: 'POST', credentials: 'include',
+    })
+    if (!res.ok) throw new Error((await res.json()).error || 'Failed')
+    await loadCronJobs()
+    selectCronJob(selectedCronId)
+  } catch (err) {
+    alert('Error: ' + err.message)
+  }
+})
+
+document.getElementById('btn-delete-cron')?.addEventListener('click', async () => {
+  if (!selectedCronId) return
+  if (!confirm('Delete this scheduled task?')) return
+  try {
+    await fetch(`/api/cron/jobs/${selectedCronId}`, {
+      method: 'DELETE', credentials: 'include',
+    })
+    selectedCronId = null
+    await loadCronJobs()
+    document.getElementById('cron-detail').classList.add('hidden')
+    document.getElementById('cron-empty').classList.remove('hidden')
+  } catch (err) {
+    alert('Error: ' + err.message)
+  }
+})
+
+// Debounced schedule preview
+document.getElementById('cron-schedule')?.addEventListener('input', (e) => {
+  clearTimeout(schedulePreviewTimer)
+  const text = e.target.value.trim()
+  const preview = document.getElementById('cron-schedule-preview')
+  if (!text) { preview.textContent = ''; return }
+  preview.textContent = 'Parsing...'
+  schedulePreviewTimer = setTimeout(async () => {
+    try {
+      const tz = document.getElementById('cron-timezone').value
+      const res = await fetch('/api/cron/parse-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ text, timezone: tz }),
+      })
+      if (!res.ok) throw new Error('Parse failed')
+      const data = await res.json()
+      preview.textContent = `${data.cronExpression} — ${data.humanReadable}`
+    } catch {
+      preview.textContent = 'Could not parse schedule'
+    }
+  }, 600)
+})
+
+// Socket.IO listener for cron run events
+socket.on('cron:run', () => {
+  if (currentView === 'cron') {
+    loadCronJobs().then(() => { if (selectedCronId) selectCronJob(selectedCronId) })
+  }
+})
+
+// Cron badge on session list items
+function getCronBadge(session) {
+  if (session.source === 'cron' || session.id?.startsWith('cron-')) {
+    return '<span class="badge badge-xs badge-ghost ml-1" title="Scheduled task">&#128339;</span>'
+  }
+  return ''
 }
 
 initTheme()

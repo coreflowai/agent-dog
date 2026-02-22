@@ -10,6 +10,9 @@ import { getIntegrationConfig } from './db/slack'
 import { initSourcesDb } from './db/sources'
 import { initVectorStore, closeVectorStore } from './db/vectors'
 import { createSourceManager, type SourceManager } from './sources'
+import { createSandboxManager, type SandboxManager } from './sandbox'
+import { createCronManager, type CronManager } from './cron'
+import { setSandboxManager } from './slack/tools/sandbox'
 import path from 'path'
 import { execSync } from 'child_process'
 
@@ -29,6 +32,8 @@ type ServerOptions = {
   insightsRunOnStart?: boolean
   /** Enable Slack bot integration (default: check env/db config) */
   slackEnabled?: boolean
+  /** Enable cron job scheduler (default: true in production) */
+  cronEnabled?: boolean
 }
 
 // Files accessible without authentication
@@ -43,6 +48,7 @@ export function createServer(options: ServerOptions = {}) {
     insightsEnabled = process.env.NODE_ENV === 'production',
     insightsRunOnStart = false,
     slackEnabled,
+    cronEnabled = process.env.NODE_ENV === 'production',
   } = options
 
   const resolvedDbPath = dbPath ?? process.env.AGENT_FLOW_DB ?? 'agent-flow.db'
@@ -185,7 +191,24 @@ export function createServer(options: ServerOptions = {}) {
     },
   })
 
-  const router = createRouter(io, slackBotRef, internalBus, sourceManager)
+  // Sandbox manager for cloud agent sandboxes
+  const agentFlowUrl = process.env.AGENT_FLOW_URL || `http://localhost:${port}`
+  const agentFlowApiKey = process.env.AGENT_FLOW_API_KEY || undefined
+  const sandboxManager = createSandboxManager({ io, agentFlowUrl, agentFlowApiKey })
+  setSandboxManager(sandboxManager)
+
+  // Cron job manager
+  let cronManager: CronManager | null = null
+  if (cronEnabled) {
+    cronManager = createCronManager({
+      io,
+      dbPath: resolvedDbPath,
+      sourcesDbPath,
+      slackBot: slackBotRef,
+    })
+  }
+
+  const router = createRouter(io, slackBotRef, internalBus, sourceManager, sandboxManager, cronManager ?? undefined)
 
   // Create insight scheduler after slackBotRef is set up
   if (insightsEnabled) {
@@ -209,6 +232,11 @@ export function createServer(options: ServerOptions = {}) {
 
   // Start source listeners from DB state
   sourceManager.start().catch(err => console.error('SourceManager startup error:', err))
+
+  // Start cron job scheduler
+  if (cronManager) {
+    cronManager.start()
+  }
 
   function serveHtml(filePath: string) {
     const file = Bun.file(filePath)
@@ -344,6 +372,7 @@ export function createServer(options: ServerOptions = {}) {
     slackBot: slackBotRef,
     url: `http://localhost:${server.port}`,
     close: async () => {
+      cronManager?.stop()
       insightScheduler?.stop()
       curiosityScheduler?.stop()
       await sourceManager.stop()

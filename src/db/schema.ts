@@ -105,6 +105,43 @@ export const dataSources = sqliteTable('data_sources', {
   updatedAt: integer('updated_at').notNull(),
 })
 
+// Sandbox sessions — tracks sandbox lifecycle linked to AgentFlow sessions
+export const sandboxSessions = sqliteTable('sandbox_sessions', {
+  id: text('id').primaryKey(),
+  sandboxId: text('sandbox_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  agentFlowSessionId: text('agent_flow_session_id').notNull(),
+  status: text('status').notNull().default('creating'),
+  config: text('config', { mode: 'json' }).default('{}'),
+  label: text('label'),
+  snapshotId: text('snapshot_id'),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  metadata: text('metadata', { mode: 'json' }).default('{}'),
+}, (table) => [
+  index('idx_sandbox_afs').on(table.agentFlowSessionId),
+])
+
+// Cron jobs for scheduled AI task execution
+export const cronJobs = sqliteTable('cron_jobs', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  prompt: text('prompt').notNull(),
+  scheduleText: text('schedule_text').notNull(),
+  cronExpression: text('cron_expression').notNull(),
+  timezone: text('timezone').notNull().default('UTC'),
+  enabled: integer('enabled').notNull().default(1),
+  notifySlack: integer('notify_slack').notNull().default(0),
+  lastRunAt: integer('last_run_at'),
+  lastRunSessionId: text('last_run_session_id'),
+  lastRunStatus: text('last_run_status'),
+  nextRunAt: integer('next_run_at'),
+  totalRuns: integer('total_runs').notNull().default(0),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull(),
+  meta: text('meta', { mode: 'json' }).default('{}'),
+})
+
 // Track last analysis state per user+repo combination
 export const insightAnalysisState = sqliteTable('insight_analysis_state', {
   id: text('id').primaryKey(),                 // composite: `${userId}:${repoName || 'all'}`

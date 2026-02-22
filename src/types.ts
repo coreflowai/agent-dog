@@ -2,7 +2,7 @@ export type AgentFlowEvent = {
   id: string
   sessionId: string
   timestamp: number
-  source: 'claude-code' | 'codex' | 'opencode'
+  source: 'claude-code' | 'codex' | 'opencode' | 'sandbox' | 'cron'
   category: 'session' | 'message' | 'tool' | 'error' | 'system'
   type: string
   role: 'user' | 'assistant' | 'system' | null
@@ -16,7 +16,7 @@ export type AgentFlowEvent = {
 
 export type Session = {
   id: string
-  source: 'claude-code' | 'codex' | 'opencode'
+  source: 'claude-code' | 'codex' | 'opencode' | 'sandbox' | 'cron'
   startTime: number
   lastEventTime: number
   status: 'active' | 'completed' | 'error' | 'archived'
@@ -44,7 +44,7 @@ export type GitInfo = {
 }
 
 export type IngestPayload = {
-  source: 'claude-code' | 'codex' | 'opencode'
+  source: 'claude-code' | 'codex' | 'opencode' | 'sandbox' | 'cron'
   sessionId: string
   event: Record<string, unknown>
   user?: UserInfo
@@ -194,6 +194,48 @@ export type UpdateDataSourceInput = {
   name?: string
   config?: DataSourceConfig
   fieldMapping?: FieldMapping
+}
+
+// Cron job types
+export type CronJob = {
+  id: string
+  name: string
+  prompt: string
+  scheduleText: string
+  cronExpression: string
+  timezone: string
+  enabled: boolean
+  notifySlack: boolean
+  lastRunAt: number | null
+  lastRunSessionId: string | null
+  lastRunStatus: 'success' | 'error' | 'running' | null
+  nextRunAt: number | null
+  totalRuns: number
+  createdAt: number
+  updatedAt: number
+  meta: Record<string, unknown>
+}
+
+export type CreateCronJobInput = {
+  name: string
+  prompt: string
+  scheduleText: string
+  cronExpression: string
+  timezone?: string
+  enabled?: boolean
+  notifySlack?: boolean
+  meta?: Record<string, unknown>
+}
+
+export type UpdateCronJobInput = {
+  name?: string
+  prompt?: string
+  scheduleText?: string
+  cronExpression?: string
+  timezone?: string
+  enabled?: boolean
+  notifySlack?: boolean
+  meta?: Record<string, unknown>
 }
 
 export type CreateSlackQuestionInput = {

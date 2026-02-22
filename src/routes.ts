@@ -8,9 +8,13 @@ import { listInsights, getInsight, deleteInsight } from './db/insights'
 import { addQuestion, getQuestion, listQuestions, updateQuestionAnswer, getIntegrationConfig, setIntegrationConfig } from './db/slack'
 import { createAuth, migrateAuth } from './auth'
 import type { EventEmitter } from 'events'
-import type { IngestPayload, CreateSlackQuestionInput, CreateDataSourceInput, UpdateDataSourceInput } from './types'
+import type { IngestPayload, CreateSlackQuestionInput, CreateDataSourceInput, UpdateDataSourceInput, CreateCronJobInput, UpdateCronJobInput } from './types'
 import type { SlackBot } from './slack'
 import type { SourceManager } from './sources'
+import type { SandboxManager } from './sandbox'
+import type { CronManager } from './cron'
+import { addCronJob, getCronJob, listCronJobs, updateCronJob, deleteCronJob } from './db/cron'
+import { parseSchedule } from './cron/parse-schedule'
 import { listSourceEntries, getEntryCount } from './db/sources'
 import { semanticSearch } from './db/vectors'
 
@@ -48,7 +52,7 @@ function json(data: unknown, status = 200) {
   })
 }
 
-export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string; adminUserId?: string }) => Promise<void> }, internalBus?: EventEmitter, sourceManager?: SourceManager) {
+export function createRouter(io: SocketIOServer, slackBot?: { bot: SlackBot | null, restart: (config: { botToken: string; appToken: string; channel: string; adminUserId?: string }) => Promise<void> }, internalBus?: EventEmitter, sourceManager?: SourceManager, sandboxManager?: SandboxManager, cronManager?: CronManager) {
   return async function handleRequest(req: Request, userId?: string): Promise<Response | null> {
     const url = new URL(req.url)
     const { pathname } = url
@@ -925,6 +929,136 @@ export const AgentFlowPlugin = async () => {
       return json(listSourceEntries({ dataSourceId, limit, offset }))
     }
 
+    // --- Sandbox API ---
+
+    // GET /api/sandbox/sessions — list sandbox sessions
+    if (req.method === 'GET' && pathname === '/api/sandbox/sessions') {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      return json(sandboxManager.listSessions())
+    }
+
+    // POST /api/sandbox/sessions — create sandbox session
+    if (req.method === 'POST' && pathname === '/api/sandbox/sessions') {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      try {
+        const body = (await req.json()) as { repoUrl?: string; branch?: string; label?: string; timeoutSeconds?: number }
+        const record = await sandboxManager.createSession(body)
+        return json(record)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create sandbox session' }, 500)
+      }
+    }
+
+    // POST /api/sandbox/sessions/:id/task — dispatch task
+    if (req.method === 'POST' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+\/task$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      const id = pathname.replace('/api/sandbox/sessions/', '').replace('/task', '')
+      try {
+        const body = (await req.json()) as { prompt: string; maxTurns?: number }
+        if (!body.prompt) return json({ error: 'Missing required field: prompt' }, 400)
+        const result = await sandboxManager.dispatchTask(id, { prompt: body.prompt, maxTurns: body.maxTurns })
+        return json(result)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to dispatch task' }, 500)
+      }
+    }
+
+    // POST /api/sandbox/sessions/:id/message — queue message
+    if (req.method === 'POST' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+\/message$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      const id = pathname.replace('/api/sandbox/sessions/', '').replace('/message', '')
+      try {
+        const body = (await req.json()) as { message: string }
+        if (!body.message) return json({ error: 'Missing required field: message' }, 400)
+        // Queue as a task with the message as prompt
+        const result = await sandboxManager.dispatchTask(id, { prompt: body.message })
+        return json(result)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to queue message' }, 500)
+      }
+    }
+
+    // POST /api/sandbox/sessions/:id/snapshot — snapshot session
+    if (req.method === 'POST' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+\/snapshot$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      return json({ error: 'Snapshot not supported by current provider' }, 501)
+    }
+
+    // POST /api/sandbox/sessions/:id/pr — create PR from sandbox
+    if (req.method === 'POST' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+\/pr$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      const id = pathname.replace('/api/sandbox/sessions/', '').replace('/pr', '')
+      try {
+        const body = (await req.json()) as { title: string; body?: string; baseBranch?: string; headBranch?: string }
+        if (!body.title) return json({ error: 'Missing required field: title' }, 400)
+        const { loadSandboxProvider } = await import('./sandbox/provider-loader')
+        const provider = await loadSandboxProvider()
+        if (!provider.createPR) return json({ error: 'Current provider does not support PR creation' }, 501)
+        const record = sandboxManager.getSession(id)
+        if (!record) return json({ error: 'Sandbox session not found' }, 404)
+        const result = await provider.createPR(record.sandboxId, body)
+        return json(result)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create PR' }, 500)
+      }
+    }
+
+    // DELETE /api/sandbox/sessions/:id — destroy session
+    if (req.method === 'DELETE' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      const id = pathname.replace('/api/sandbox/sessions/', '')
+      try {
+        await sandboxManager.destroySession(id)
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to destroy sandbox session' }, 500)
+      }
+    }
+
+    // GET /api/sandbox/sessions/:id — session detail
+    if (req.method === 'GET' && pathname.match(/^\/api\/sandbox\/sessions\/[^/]+$/)) {
+      if (!sandboxManager) return json({ error: 'Sandbox system not enabled' }, 500)
+      const id = pathname.replace('/api/sandbox/sessions/', '')
+      const record = sandboxManager.getSession(id)
+      if (!record) return json({ error: 'Sandbox session not found' }, 404)
+      try {
+        const status = await sandboxManager.getStatus(id)
+        return json({ ...record, liveStatus: status })
+      } catch {
+        return json(record)
+      }
+    }
+
+    // GET /api/integrations/sandbox — get provider config
+    if (req.method === 'GET' && pathname === '/api/integrations/sandbox') {
+      const config = getIntegrationConfig('sandbox')
+      if (!config) return json({ configured: false })
+      const c = config.config as Record<string, string>
+      return json({
+        configured: true,
+        providerScript: c.providerScript || null,
+      })
+    }
+
+    // POST /api/integrations/sandbox — save provider config
+    if (req.method === 'POST' && pathname === '/api/integrations/sandbox') {
+      try {
+        const body = (await req.json()) as { providerScript?: string }
+        const existing = getIntegrationConfig('sandbox')
+        const prev = (existing?.config || {}) as Record<string, string>
+        const config = {
+          providerScript: body.providerScript ?? prev.providerScript ?? '',
+        }
+        setIntegrationConfig('sandbox', config)
+        // Clear provider cache to reload
+        const { clearProviderCache } = await import('./sandbox/provider-loader')
+        clearProviderCache()
+        return json({ ok: true })
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to save config' }, 500)
+      }
+    }
+
     // GET /api/search — semantic search over source entries
     if (req.method === 'GET' && pathname === '/api/search') {
       const q = url.searchParams.get('q')
@@ -937,6 +1071,123 @@ export const AgentFlowPlugin = async () => {
       } catch (err: any) {
         return json({ error: err.message ?? 'Search failed' }, 500)
       }
+    }
+
+    // --- Cron Jobs API ---
+
+    // GET /api/cron/jobs — list all jobs
+    if (req.method === 'GET' && pathname === '/api/cron/jobs') {
+      return json(listCronJobs())
+    }
+
+    // POST /api/cron/parse-schedule — preview NL → cron (no save)
+    if (req.method === 'POST' && pathname === '/api/cron/parse-schedule') {
+      try {
+        const body = (await req.json()) as { text: string; timezone?: string }
+        if (!body.text) return json({ error: 'Missing required field: text' }, 400)
+        const parsed = await parseSchedule(body.text, body.timezone)
+        return json(parsed)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to parse schedule' }, 500)
+      }
+    }
+
+    // POST /api/cron/jobs — create job (parses NL schedule)
+    if (req.method === 'POST' && pathname === '/api/cron/jobs') {
+      try {
+        const body = (await req.json()) as { name: string; prompt: string; scheduleText: string; timezone?: string; notifySlack?: boolean }
+        if (!body.name || !body.prompt || !body.scheduleText) {
+          return json({ error: 'Missing required fields: name, prompt, scheduleText' }, 400)
+        }
+        const parsed = await parseSchedule(body.scheduleText, body.timezone)
+        const job = addCronJob({
+          name: body.name,
+          prompt: body.prompt,
+          scheduleText: body.scheduleText,
+          cronExpression: parsed.cronExpression,
+          timezone: parsed.timezone,
+          notifySlack: body.notifySlack,
+        })
+        cronManager?.scheduleJob(job.id)
+        return json(job)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to create cron job' }, 500)
+      }
+    }
+
+    // POST /api/cron/jobs/:id/toggle — enable/disable
+    if (req.method === 'POST' && pathname.match(/^\/api\/cron\/jobs\/[^/]+\/toggle$/)) {
+      const id = pathname.replace('/api/cron/jobs/', '').replace('/toggle', '')
+      const job = getCronJob(id)
+      if (!job) return json({ error: 'Job not found' }, 404)
+      const updated = updateCronJob(id, { enabled: !job.enabled })
+      if (updated?.enabled) {
+        cronManager?.scheduleJob(id)
+      } else {
+        cronManager?.unscheduleJob(id)
+      }
+      return json(updated)
+    }
+
+    // POST /api/cron/jobs/:id/trigger — manual run now
+    if (req.method === 'POST' && pathname.match(/^\/api\/cron\/jobs\/[^/]+\/trigger$/)) {
+      const id = pathname.replace('/api/cron/jobs/', '').replace('/trigger', '')
+      const job = getCronJob(id)
+      if (!job) return json({ error: 'Job not found' }, 404)
+      // Run async — return immediately
+      const result = cronManager?.triggerJob(id)
+      if (!result) return json({ error: 'Cron manager not available' }, 500)
+      // Don't await — let it run in background
+      result.catch(err => console.error(`[CronRoute] Trigger error for ${id}:`, err))
+      return json({ ok: true, message: 'Job triggered' })
+    }
+
+    // PUT /api/cron/jobs/:id — update job
+    if (req.method === 'PUT' && pathname.match(/^\/api\/cron\/jobs\/[^/]+$/)) {
+      const id = pathname.replace('/api/cron/jobs/', '')
+      const job = getCronJob(id)
+      if (!job) return json({ error: 'Job not found' }, 404)
+      try {
+        const body = (await req.json()) as { name?: string; prompt?: string; scheduleText?: string; timezone?: string; notifySlack?: boolean }
+        const updates: UpdateCronJobInput = {}
+        if (body.name !== undefined) updates.name = body.name
+        if (body.prompt !== undefined) updates.prompt = body.prompt
+        if (body.notifySlack !== undefined) updates.notifySlack = body.notifySlack
+
+        // Re-parse schedule if changed
+        if (body.scheduleText && body.scheduleText !== job.scheduleText) {
+          const parsed = await parseSchedule(body.scheduleText, body.timezone ?? job.timezone)
+          updates.scheduleText = body.scheduleText
+          updates.cronExpression = parsed.cronExpression
+          updates.timezone = parsed.timezone
+        } else if (body.timezone && body.timezone !== job.timezone) {
+          updates.timezone = body.timezone
+        }
+
+        const updated = updateCronJob(id, updates)
+        if (updated?.enabled) {
+          cronManager?.rescheduleJob(id)
+        }
+        return json(updated)
+      } catch (err: any) {
+        return json({ error: err.message ?? 'Failed to update cron job' }, 500)
+      }
+    }
+
+    // DELETE /api/cron/jobs/:id
+    if (req.method === 'DELETE' && pathname.match(/^\/api\/cron\/jobs\/[^/]+$/)) {
+      const id = pathname.replace('/api/cron/jobs/', '')
+      cronManager?.unscheduleJob(id)
+      deleteCronJob(id)
+      return json({ ok: true })
+    }
+
+    // GET /api/cron/jobs/:id — single job detail
+    if (req.method === 'GET' && pathname.match(/^\/api\/cron\/jobs\/[^/]+$/)) {
+      const id = pathname.replace('/api/cron/jobs/', '')
+      const job = getCronJob(id)
+      if (!job) return json({ error: 'Job not found' }, 404)
+      return json(job)
     }
 
     return null // Not handled

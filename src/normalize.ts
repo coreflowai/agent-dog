@@ -468,12 +468,65 @@ function normalizeOpencodeJsonl(
   }
 }
 
+export function normalizeSandbox(payload: IngestPayload): AgentFlowEvent {
+  // Sandbox events arrive in claude-code hook format but with source: 'sandbox'
+  const event = normalizeClaudeCode(payload)
+  return { ...event, source: 'sandbox' }
+}
+
+export function normalizeCron(payload: IngestPayload): AgentFlowEvent {
+  const { sessionId, event } = payload
+  const eventType = (event.type ?? '') as string
+  const now = Date.now()
+
+  const base: AgentFlowEvent = {
+    id: generateId(),
+    sessionId,
+    timestamp: (event.timestamp as number) ?? now,
+    source: 'cron',
+    category: 'system',
+    type: eventType,
+    role: null,
+    text: null,
+    toolName: null,
+    toolInput: null,
+    toolOutput: null,
+    error: null,
+    meta: {},
+  }
+
+  switch (eventType) {
+    case 'session.start':
+      return { ...base, category: 'session', type: 'session.start', meta: event.meta as Record<string, unknown> ?? {} }
+    case 'session.end':
+      return { ...base, category: 'session', type: 'session.end' }
+    case 'message.user':
+      return { ...base, category: 'message', type: 'message.user', role: 'user', text: (event.text ?? null) as string | null }
+    case 'message.assistant':
+      return { ...base, category: 'message', type: 'message.assistant', role: 'assistant', text: (event.text ?? null) as string | null }
+    case 'tool.start':
+      return { ...base, category: 'tool', type: 'tool.start', toolName: (event.toolName ?? null) as string | null, toolInput: event.toolInput ?? null }
+    case 'tool.end':
+      return { ...base, category: 'tool', type: 'tool.end', toolName: (event.toolName ?? null) as string | null, toolInput: event.toolInput ?? null, toolOutput: truncate(event.toolOutput ?? null) }
+    case 'error':
+      return { ...base, category: 'error', type: 'error', error: (event.error ?? null) as string | null }
+    default:
+      return { ...base, meta: { rawEvent: event } }
+  }
+}
+
 export function normalize(payload: IngestPayload): AgentFlowEvent {
   if (payload.source === 'opencode') {
     return normalizeOpencode(payload)
   }
   if (payload.source === 'codex') {
     return normalizeCodex(payload)
+  }
+  if (payload.source === 'sandbox') {
+    return normalizeSandbox(payload)
+  }
+  if (payload.source === 'cron') {
+    return normalizeCron(payload)
   }
   return normalizeClaudeCode(payload)
 }
